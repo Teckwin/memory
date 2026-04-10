@@ -1,0 +1,32 @@
+# Cargo configuration
+
+[alias]
+# Run all checks
+check-all = "check --workspace --all-targets"
+
+# Run all tests with coverage
+test-cov = "llvm-cov --workspace"
+
+# Format and check
+fmt-check = "fmt -- --check"
+clippy-check = "clippy --workspace -- -D warnings"
+
+# Doc with all items
+doc-all = "doc --workspace --no-deps --document-private-items"
+
+# Audit dependencies
+audit-deps = "audit"
+
+# Outdated dependencies
+outdated-deps = "outdated -R"
+
+[build]
+jobs = 4
+
+[term]
+verbose = false
+color = 'auto'
+
+[net]
+retry = 2
+git-fetch-with-cli = true
