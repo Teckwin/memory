@@ -107,7 +107,7 @@ jobs:
           toolchain: stable
 
       - name: Run unit tests
-        run: cargo test --workspace -- --nocapture
+        run: cargo test --workspace
 
       - name: Run doc tests
         run: cargo test --workspace --doc
