@@ -1,0 +1,26 @@
+[package]
+name = "memory-train"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+memory-core = { path = "../memory-core" }
+memory-storage = { path = "../memory-storage" }
+memory-index = { path = "../memory-index" }
+tokio = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+
+# ML
+candle-core = "0.6"
+candle-nn = "0.6"
+candle-transformers = "0.6"
+
+[dev-dependencies]
+tokio = { workspace = true }

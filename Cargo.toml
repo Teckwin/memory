@@ -1,0 +1,28 @@
+[workspace]
+members = [
+    "memory-core",
+    "memory-api",
+    "memory-storage",
+    "memory-index",
+    "memory-lifecycle",
+    "memory-train",
+]
+
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Memory Team"]
+license = "MIT"
+
+[workspace.dependencies]
+# Shared dependencies
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -1,0 +1,20 @@
+[package]
+name = "memory-lifecycle"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+memory-core = { path = "../memory-core" }
+memory-storage = { path = "../memory-storage" }
+tokio = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
