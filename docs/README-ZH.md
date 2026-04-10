@@ -2,13 +2,19 @@
 
 本目录包含记忆管理系统的文档。
 
+[English Version](./README.md)
+
 ## 内容
 
-- [数据上传协议](./data-upload-protocol.md) - 向记忆系统上传数据的协议
-- 实现计划
-  - [架构设计](./2026-04-09-local-memory-management-system-v1.md)
-  - [训练分析](./2026-04-09-local-memory-training-analysis-v1.md)
-  - [实施计划](./2026-04-09-local-memory-implementation-plan-v1.md)
+### 指南
+- [数据上传协议](./data-upload-protocol-zh.md) - 向记忆系统上传数据的协议
+  - [English](./data-upload-protocol.md)
+  - [中文](./data-upload-protocol-zh.md)
+
+### 实现计划
+- [架构设计](../plans/2026-04-09-local-memory-management-system-v1.md)
+- [训练分析](../plans/2026-04-09-local-memory-training-analysis-v1.md)
+- [实施计划](../plans/2026-04-09-local-memory-implementation-plan-v1.md)
 
 ## API 文档
 

@@ -2,13 +2,19 @@
 
 This directory contains documentation for the Memory Management System.
 
+[中文版](./README-ZH.md)
+
 ## Contents
 
-- [Data Upload Protocol](./data-upload-protocol.md) - Protocol for uploading data to the memory system
-- Implementation Plans
-  - [Architecture Design](./2026-04-09-local-memory-management-system-v1.md)
-  - [Training Analysis](./2026-04-09-local-memory-training-analysis-v1.md)
-  - [Implementation Plan](./2026-04-09-local-memory-implementation-plan-v1.md)
+### Guides
+- [Data Upload Protocol](./data-upload-protocol.md) - Protocol for uploading data
+  - [English](./data-upload-protocol.md)
+  - [中文](./data-upload-protocol-zh.md)
+
+### Implementation Plans
+- [Architecture Design](../plans/2026-04-09-local-memory-management-system-v1.md)
+- [Training Analysis](../plans/2026-04-09-local-memory-training-analysis-v1.md)
+- [Implementation Plan](../plans/2026-04-09-local-memory-implementation-plan-v1.md)
 
 ## API Documentation
 

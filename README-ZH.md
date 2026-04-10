@@ -2,6 +2,8 @@
 
 一个面向 AI 应用的本地记忆管理系统，提供高效的记忆存储、检索和自动学习能力。
 
+[English Version](./README.md)
+
 ## 特性
 
 - **分层存储**: 热数据（内存）、冷数据（SQLite）、僵尸数据（归档）三层存储
@@ -22,8 +24,11 @@ memory/
 │   ├── memory-index/       # 索引层（向量/全文/混合）
 │   ├── memory-lifecycle/   # 生命周期管理
 │   └── memory-train/       # 训练模块
-├── docs/
-└── plans/
+├── docs/                   # 文档
+│   ├── README.md          # (EN) System documentation
+│   ├── README-ZH.md       # (ZH) 系统文档
+│   └── data-upload-protocol*.md
+└── plans/                  # 实现计划
 ```
 
 ## 快速开始

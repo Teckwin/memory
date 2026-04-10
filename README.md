@@ -2,6 +2,8 @@
 
 A local memory management system for AI applications, providing efficient memory storage, retrieval, and automatic learning capabilities.
 
+[中文版](./README-ZH.md)
+
 ## Features
 
 - **Tiered Storage**: Hot (in-memory), Cold (SQLite), and Zombie (archive) storage layers
@@ -22,8 +24,11 @@ memory/
 │   ├── memory-index/       # Index layer (vector/fulltext/hybrid)
 │   ├── memory-lifecycle/   # Lifecycle management
 │   └── memory-train/       # Training module
-├── docs/
-└── plans/
+├── docs/                   # Documentation
+│   ├── README.md          # (EN) System documentation
+│   ├── README-ZH.md       # (ZH) 系统文档
+│   └── data-upload-protocol*.md
+└── plans/                  # Implementation plans
 ```
 
 ## Quick Start
