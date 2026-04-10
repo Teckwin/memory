@@ -7,21 +7,19 @@
 //! - **Hybrid Index**: Combined vector + full-text search
 
 pub mod error;
-pub mod vector_index;
 pub mod fulltext_index;
-pub mod metadata_index;
 pub mod hybrid_index;
+pub mod metadata_index;
+pub mod vector_index;
 
 pub use error::IndexError;
-pub use vector_index::{VectorIndex, HnswConfig, VectorSearchResult, VectorIndexBuilder};
-pub use fulltext_index::{FulltextIndex, FulltextConfig, FulltextIndexBuilder};
-pub use metadata_index::{MetadataIndex, MetadataConfig, MetadataIndexBuilder};
-pub use hybrid_index::{HybridIndex, HybridConfig, HybridIndexBuilder};
+pub use fulltext_index::{FulltextConfig, FulltextIndex, FulltextIndexBuilder};
+pub use hybrid_index::{HybridConfig, HybridIndex, HybridIndexBuilder};
+pub use metadata_index::{MetadataConfig, MetadataIndex, MetadataIndexBuilder};
+pub use vector_index::{HnswConfig, VectorIndex, VectorIndexBuilder, VectorSearchResult};
 
 pub use memory_core::{
-    MemoryEntry, MemoryId, WorkspaceId,
-    SearchQuery, SearchResult,
-    MemoryStatus, DateRange,
+    DateRange, MemoryEntry, MemoryId, MemoryStatus, SearchQuery, SearchResult, WorkspaceId,
 };
 
 // Re-export commonly used types

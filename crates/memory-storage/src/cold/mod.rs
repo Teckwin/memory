@@ -1,14 +1,27 @@
 //! Cold storage - SQLite backend for Cold/Zombie memories
 
+use async_trait::async_trait;
 use std::path::PathBuf;
 use tokio::task;
-use async_trait::async_trait;
 
-use memory_core::{MemoryId, MemoryEntry, MemoryStatus, WorkspaceId,
-    SearchQuery, SearchResult, BatchResult,
-    MemoryApi, MemoryError, MemoryContent, MemoryMetadata,
-};
 use crate::error::StorageError;
+use memory_core::{
+    BatchResult, MemoryApi, MemoryContent, MemoryEntry, MemoryError, MemoryId, MemoryMetadata,
+    MemoryStatus, SearchQuery, SearchResult, WorkspaceId,
+};
+/// Type alias for memory-to-row conversion result
+type MemoryRow = (
+    String,
+    String,
+    String,
+    Option<Vec<u8>>,
+    String,
+    String,
+    String,
+    String,
+    u64,
+    Option<String>,
+);
 
 /// Cold storage implementation using SQLite
 pub struct ColdStorage {
@@ -24,7 +37,7 @@ impl ColdStorage {
     /// Initialize the database schema
     pub async fn initialize(&self) -> Result<(), StorageError> {
         let path = self.db_path.clone();
-        
+
         task::spawn_blocking(move || {
             let conn = rusqlite::Connection::open(&path)?;
             Self::create_tables(&conn)?;
@@ -50,13 +63,13 @@ impl ColdStorage {
                 last_accessed TEXT
             );
 
-            CREATE INDEX IF NOT EXISTS idx_memories_workspace 
+            CREATE INDEX IF NOT EXISTS idx_memories_workspace
                 ON memories(workspace_id);
-            CREATE INDEX IF NOT EXISTS idx_memories_status 
+            CREATE INDEX IF NOT EXISTS idx_memories_status
                 ON memories(status);
-            CREATE INDEX IF NOT EXISTS idx_memories_created 
+            CREATE INDEX IF NOT EXISTS idx_memories_created
                 ON memories(created_at);
-            CREATE INDEX IF NOT EXISTS idx_memories_updated 
+            CREATE INDEX IF NOT EXISTS idx_memories_updated
                 ON memories(updated_at);
             "#,
         )?;
@@ -64,13 +77,14 @@ impl ColdStorage {
     }
 
     /// Convert MemoryEntry to row data
-    fn memory_to_row(memory: &MemoryEntry) -> Result<(String, String, String, Option<Vec<u8>>, String, String, String, String, u64, Option<String>), StorageError> {
+    fn memory_to_row(memory: &MemoryEntry) -> Result<MemoryRow, StorageError> {
         let content_json = serde_json::to_string(&memory.content)?;
         let metadata_json = serde_json::to_string(&memory.metadata)?;
-        let embedding_bytes = memory.embedding.as_ref().map(|e| {
-            serde_json::to_vec(e).ok()
-        }).flatten();
-        
+        let embedding_bytes = memory
+            .embedding
+            .as_ref()
+            .and_then(|e| serde_json::to_vec(e).ok());
+
         Ok((
             memory.id.to_string(),
             memory.workspace_id.to_string(),
@@ -86,6 +100,7 @@ impl ColdStorage {
     }
 
     /// Parse row data to MemoryEntry
+    #[allow(clippy::too_many_arguments)]
     fn parse_row(
         id_str: String,
         workspace_id_str: String,
@@ -101,25 +116,27 @@ impl ColdStorage {
         let content: MemoryContent = serde_json::from_str(&content_json)?;
         let metadata: MemoryMetadata = serde_json::from_str(&metadata_json)?;
         let status: MemoryStatus = serde_json::from_str(&status_str)?;
-        
-        let embedding: Option<Vec<f32>> = embedding_bytes
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+
+        let embedding: Option<Vec<f32>> =
+            embedding_bytes.and_then(|bytes| serde_json::from_slice(&bytes).ok());
 
         let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)
             .map(|dt| dt.with_timezone(&chrono::Utc))
             .map_err(|e| StorageError::SerializationError(e.to_string()))?;
-        
+
         let updated_at = chrono::DateTime::parse_from_rfc3339(&updated_at_str)
             .map(|dt| dt.with_timezone(&chrono::Utc))
             .map_err(|e| StorageError::SerializationError(e.to_string()))?;
-        
+
         let last_accessed = last_accessed_str
             .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
             .map(|dt| dt.with_timezone(&chrono::Utc));
 
         Ok(MemoryEntry {
-            id: uuid::Uuid::parse_str(&id_str).map_err(|e| StorageError::SerializationError(e.to_string()))?,
-            workspace_id: uuid::Uuid::parse_str(&workspace_id_str).map_err(|e| StorageError::SerializationError(e.to_string()))?,
+            id: uuid::Uuid::parse_str(&id_str)
+                .map_err(|e| StorageError::SerializationError(e.to_string()))?,
+            workspace_id: uuid::Uuid::parse_str(&workspace_id_str)
+                .map_err(|e| StorageError::SerializationError(e.to_string()))?,
             content,
             embedding,
             metadata,
@@ -136,8 +153,8 @@ impl ColdStorage {
 impl MemoryApi for ColdStorage {
     async fn add(&self, memory: MemoryEntry) -> Result<MemoryId, MemoryError> {
         let path = self.db_path.clone();
-        let row = ColdStorage::memory_to_row(&memory).map_err(StorageError::from)?;
-        
+        let row = ColdStorage::memory_to_row(&memory)?;
+
         task::spawn_blocking(move || {
             let conn = rusqlite::Connection::open(&path)?;
             conn.execute(
@@ -162,17 +179,17 @@ impl MemoryApi for ColdStorage {
         .await
         .map_err(|e| MemoryError::StorageError(format!("Task join error: {}", e)))?
         .map_err(|e: StorageError| MemoryError::StorageError(e.to_string()))?;
-        
+
         Ok(memory.id)
     }
 
     async fn get(&self, id: MemoryId) -> Result<MemoryEntry, MemoryError> {
         let path = self.db_path.clone();
         let id_str = id.to_string();
-        
+
         task::spawn_blocking(move || {
             let conn = rusqlite::Connection::open(&path)?;
-            
+
             let row_data = conn.query_row(
                 "SELECT id, workspace_id, content, embedding, metadata, status, created_at, updated_at, access_count, last_accessed FROM memories WHERE id = ?1",
                 [&id_str],
@@ -191,7 +208,7 @@ impl MemoryApi for ColdStorage {
                     ))
                 },
             )?;
-            
+
             let result = ColdStorage::parse_row(
                 row_data.0,
                 row_data.1,
@@ -204,7 +221,7 @@ impl MemoryApi for ColdStorage {
                 row_data.8,
                 row_data.9,
             )?;
-            
+
             Ok(result)
         })
         .await
@@ -221,14 +238,11 @@ impl MemoryApi for ColdStorage {
     async fn delete(&self, id: MemoryId) -> Result<(), MemoryError> {
         let path = self.db_path.clone();
         let id_str = id.to_string();
-        
+
         task::spawn_blocking(move || {
             let conn = rusqlite::Connection::open(&path)?;
-            let affected = conn.execute(
-                "DELETE FROM memories WHERE id = ?1",
-                [&id_str],
-            )?;
-            
+            let affected = conn.execute("DELETE FROM memories WHERE id = ?1", [&id_str])?;
+
             if affected == 0 {
                 return Err(StorageError::ColdError(format!("Memory {} not found", id)));
             }
@@ -246,32 +260,32 @@ impl MemoryApi for ColdStorage {
     ) -> Result<Vec<SearchResult>, MemoryError> {
         let path = self.db_path.clone();
         let workspace_id_str = workspace_id.to_string();
-        
+
         task::spawn_blocking(move || {
             let conn = rusqlite::Connection::open(&path)?;
-            
+
             let mut sql = String::from("SELECT id, workspace_id, content, embedding, metadata, status, created_at, updated_at, access_count, last_accessed FROM memories WHERE workspace_id = ?1");
             let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(workspace_id_str)];
-            
+
             if let Some(status) = &query.status {
                 sql.push_str(" AND status = ?");
                 params.push(Box::new(status.to_string()));
             }
-            
+
             sql.push_str(" ORDER BY created_at DESC");
-            
+
             if query.limit > 0 {
                 sql.push_str(&format!(" LIMIT {}", query.limit));
             }
-            
+
             if query.offset > 0 {
                 sql.push_str(&format!(" OFFSET {}", query.offset));
             }
-            
+
             let mut stmt = conn.prepare(&sql)?;
-            
+
             let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-            
+
             let row_datas: Vec<(String, String, String, Option<Vec<u8>>, String, String, String, String, u64, Option<String>)> = stmt.query_map(params_refs.as_slice(), |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -312,7 +326,7 @@ impl MemoryApi for ColdStorage {
                 highlights: vec![],
             })
             .collect();
-            
+
             Ok(results)
         })
         .await
@@ -322,15 +336,15 @@ impl MemoryApi for ColdStorage {
 
     async fn batch_add(&self, memories: Vec<MemoryEntry>) -> Result<BatchResult, MemoryError> {
         let path = self.db_path.clone();
-        
+
         // Process in spawn_blocking to avoid many context switches
         task::spawn_blocking(move || {
             let conn = rusqlite::Connection::open(&path)?;
             let mut result = BatchResult::new();
-            
+
             // Use transaction for batch efficiency
             let tx = conn.unchecked_transaction()?;
-            
+
             for memory in memories {
                 match ColdStorage::memory_to_row(&memory) {
                     Ok(row) => {
@@ -351,7 +365,7 @@ impl MemoryApi for ColdStorage {
                                 row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8, row.9
                             ],
                         );
-                        
+
                         match res {
                             Ok(_) => result.add_success(),
                             Err(e) => result.add_failure(format!("{}: {}", memory.id, e)),
@@ -360,7 +374,7 @@ impl MemoryApi for ColdStorage {
                     Err(e) => result.add_failure(format!("{}: {}", memory.id, e)),
                 }
             }
-            
+
             tx.commit()?;
             Ok(result)
         })
@@ -371,13 +385,13 @@ impl MemoryApi for ColdStorage {
 
     async fn batch_delete(&self, ids: Vec<MemoryId>) -> Result<BatchResult, MemoryError> {
         let path = self.db_path.clone();
-        
+
         task::spawn_blocking(move || {
             let conn = rusqlite::Connection::open(&path)?;
             let mut result = BatchResult::new();
-            
+
             let tx = conn.unchecked_transaction()?;
-            
+
             for id in ids {
                 let id_str = id.to_string();
                 match tx.execute("DELETE FROM memories WHERE id = ?1", [&id_str]) {
@@ -391,7 +405,7 @@ impl MemoryApi for ColdStorage {
                     Err(e) => result.add_failure(format!("{}: {}", id, e)),
                 }
             }
-            
+
             tx.commit()?;
             Ok(result)
         })
@@ -404,8 +418,9 @@ impl MemoryApi for ColdStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use memory_core::{MemoryContent, MemoryMetadata};
+
+    use tempfile::tempdir;
 
     fn create_test_memory(status: MemoryStatus) -> MemoryEntry {
         MemoryEntry {
@@ -413,9 +428,10 @@ mod tests {
             workspace_id: uuid::Uuid::new_v4(),
             content: MemoryContent::Text("test content".to_string()),
             embedding: None,
-            metadata: MemoryMetadata::new(memory_core::MemorySource::UserQuery { 
-                query: "test".to_string() 
-            }).with_tags(vec!["test".to_string()]),
+            metadata: MemoryMetadata::new(memory_core::MemorySource::UserQuery {
+                query: "test".to_string(),
+            })
+            .with_tags(vec!["test".to_string()]),
             status,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -429,7 +445,7 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let db_path = temp_dir.path().join("test.db");
         let storage = ColdStorage::new(db_path);
-        
+
         let result = storage.initialize().await;
         assert!(result.is_ok());
     }
@@ -440,13 +456,13 @@ mod tests {
         let db_path = temp_dir.path().join("test.db");
         let storage = ColdStorage::new(db_path);
         storage.initialize().await.unwrap();
-        
+
         let memory = create_test_memory(MemoryStatus::Cold);
         let id = memory.id;
-        
+
         let add_result = storage.add(memory).await;
         assert!(add_result.is_ok());
-        
+
         let get_result = storage.get(id).await;
         assert!(get_result.is_ok());
         assert_eq!(get_result.unwrap().id, id);
@@ -458,19 +474,19 @@ mod tests {
         let db_path = temp_dir.path().join("test.db");
         let storage = ColdStorage::new(db_path);
         storage.initialize().await.unwrap();
-        
+
         let memory = create_test_memory(MemoryStatus::Cold);
         let id = memory.id;
-        
+
         storage.add(memory).await.unwrap();
-        
+
         let mut updated_memory = create_test_memory(MemoryStatus::Cold);
         updated_memory.id = id;
         updated_memory.content = MemoryContent::Text("updated content".to_string());
-        
+
         let update_result = storage.update(updated_memory).await;
         assert!(update_result.is_ok());
-        
+
         let get_result = storage.get(id).await.unwrap();
         assert_eq!(get_result.content.as_text(), Some("updated content"));
     }
@@ -481,14 +497,14 @@ mod tests {
         let db_path = temp_dir.path().join("test.db");
         let storage = ColdStorage::new(db_path);
         storage.initialize().await.unwrap();
-        
+
         let memory = create_test_memory(MemoryStatus::Cold);
         let id = memory.id;
-        
+
         storage.add(memory).await.unwrap();
         let delete_result = storage.delete(id).await;
         assert!(delete_result.is_ok());
-        
+
         let get_result = storage.get(id).await;
         assert!(get_result.is_err());
     }
@@ -499,22 +515,22 @@ mod tests {
         let db_path = temp_dir.path().join("test.db");
         let storage = ColdStorage::new(db_path);
         storage.initialize().await.unwrap();
-        
+
         let workspace_id = uuid::Uuid::new_v4();
-        
+
         for i in 0..5 {
             let mut memory = create_test_memory(MemoryStatus::Cold);
             memory.workspace_id = workspace_id;
             memory.content = MemoryContent::Text(format!("test content {}", i));
             storage.add(memory).await.unwrap();
         }
-        
+
         let query = SearchQuery {
             workspace_id: Some(workspace_id),
             limit: 10,
             ..Default::default()
         };
-        
+
         let results = storage.list(workspace_id, query).await.unwrap();
         assert_eq!(results.len(), 5);
     }
@@ -525,18 +541,16 @@ mod tests {
         let db_path = temp_dir.path().join("test.db");
         let storage = ColdStorage::new(db_path);
         storage.initialize().await.unwrap();
-        
+
         let memories: Vec<MemoryEntry> = (0..10)
             .map(|_| create_test_memory(MemoryStatus::Cold))
             .collect();
-        
+
         let add_result = storage.batch_add(memories).await.unwrap();
         assert_eq!(add_result.success_count, 10);
-        
-        let ids: Vec<MemoryId> = (0..5)
-            .map(|_| uuid::Uuid::new_v4())
-            .collect();
-        
+
+        let ids: Vec<MemoryId> = (0..5).map(|_| uuid::Uuid::new_v4()).collect();
+
         let delete_result = storage.batch_delete(ids).await.unwrap();
         assert_eq!(delete_result.success_count, 0); // None exist
     }

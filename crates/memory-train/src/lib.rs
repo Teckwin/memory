@@ -38,22 +38,22 @@
 //! }
 //! ```
 
-pub mod error;
 pub mod data_preparer;
-pub mod trainer;
+pub mod error;
 pub mod model_manager;
+pub mod trainer;
 
-pub use error::TrainError;
 pub use data_preparer::DataPreparer;
-pub use trainer::Trainer;
+pub use error::TrainError;
 pub use model_manager::ModelManager;
+pub use trainer::Trainer;
 
+use async_trait::async_trait;
 use memory_core::{
-    MemoryError, MemoryEntry, WorkspaceId,
-    TrainApi, TrainData, TrainResult, TrainParams, TrainModel, LoadedModel,
+    LoadedModel, MemoryEntry, MemoryError, TrainApi, TrainData, TrainModel, TrainParams,
+    TrainResult, WorkspaceId,
 };
 use memory_storage::UnifiedStorage;
-use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -73,7 +73,9 @@ impl TrainService {
         models_dir: std::path::PathBuf,
     ) -> Result<Self, MemoryError> {
         let model_manager = ModelManager::new(models_dir);
-        model_manager.initialize().await
+        model_manager
+            .initialize()
+            .await
             .map_err(|e| MemoryError::TrainingError(e.to_string()))?;
 
         Ok(Self {
@@ -96,27 +98,36 @@ impl TrainService {
     }
 
     /// Generate simple embeddings for texts
-    /// 
+    ///
     /// This is a simplified implementation that creates mock embeddings.
     /// In production, this would use a proper embedding model.
     fn generate_simple_embeddings(&self, texts: &[String]) -> Vec<Vec<f32>> {
         // Embedding dimension
         const DIM: usize = 128;
-        
-        texts.iter().map(|text| {
-            // Simple hash-based "embedding" for demonstration
-            // In production, use a proper embedding model
-            let hash = self.simple_hash(text);
-            
-            // Create a deterministic but varied embedding
-            (0..DIM).map(|i| {
-                // Use different parts of the hash for different dimensions
-                // to avoid shifting by more than 63 bits
-                let shift = (i % 64) as u32;
-                let bit = (hash >> shift) & 1;
-                if bit == 1 { 1.0 } else { -1.0 }
-            }).collect()
-        }).collect()
+
+        texts
+            .iter()
+            .map(|text| {
+                // Simple hash-based "embedding" for demonstration
+                // In production, use a proper embedding model
+                let hash = self.simple_hash(text);
+
+                // Create a deterministic but varied embedding
+                (0..DIM)
+                    .map(|i| {
+                        // Use different parts of the hash for different dimensions
+                        // to avoid shifting by more than 63 bits
+                        let shift = (i % 64) as u32;
+                        let bit = (hash >> shift) & 1;
+                        if bit == 1 {
+                            1.0
+                        } else {
+                            -1.0
+                        }
+                    })
+                    .collect()
+            })
+            .collect()
     }
 
     /// Simple hash function for generating pseudo-embeddings
@@ -143,11 +154,14 @@ impl TrainApi for TrainService {
         _params: TrainParams,
     ) -> Result<TrainData, MemoryError> {
         // Fetch memories from storage
-        let memories = self.fetch_memories_for_workspace(workspace_id).await
+        let memories = self
+            .fetch_memories_for_workspace(workspace_id)
+            .await
             .map_err(|e| MemoryError::TrainingError(e.to_string()))?;
 
         // Prepare training data
-        self.data_preparer.prepare(memories)
+        self.data_preparer
+            .prepare(memories)
             .map_err(|e| MemoryError::TrainingError(e.to_string()))
     }
 
@@ -157,21 +171,24 @@ impl TrainApi for TrainService {
         data: TrainData,
         params: TrainParams,
     ) -> Result<TrainResult, MemoryError> {
-        self.trainer.train(data, params)
+        self.trainer
+            .train(data, params)
             .await
             .map_err(|e| MemoryError::TrainingError(e.to_string()))
     }
 
     /// List all available trained models
     async fn list_models(&self) -> Result<Vec<TrainModel>, MemoryError> {
-        self.model_manager.list_models()
+        self.model_manager
+            .list_models()
             .await
             .map_err(|e| MemoryError::TrainingError(e.to_string()))
     }
 
     /// Load a trained model by ID
     async fn load_model(&self, model_id: Uuid) -> Result<LoadedModel, MemoryError> {
-        self.model_manager.load_model(model_id)
+        self.model_manager
+            .load_model(model_id)
             .await
             .map_err(|e| MemoryError::TrainingError(e.to_string()))
     }
@@ -184,7 +201,7 @@ impl TrainApi for TrainService {
 
 impl TrainService {
     /// Fetch all memories for a workspace
-    /// 
+    ///
     /// This is a helper method that iterates through storage tiers
     /// to collect all memories in a workspace.
     #[allow(dead_code)]
@@ -244,10 +261,7 @@ mod tests {
             model_manager: ModelManager::new(std::path::PathBuf::from("/tmp/models")),
         };
 
-        let texts = vec![
-            "hello world".to_string(),
-            "foo bar".to_string(),
-        ];
+        let texts = vec!["hello world".to_string(), "foo bar".to_string()];
 
         let embeddings = service.generate_simple_embeddings(&texts);
 

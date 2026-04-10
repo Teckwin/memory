@@ -1,11 +1,11 @@
 [workspace]
 members = [
-    "memory-core",
-    "memory-api",
-    "memory-storage",
-    "memory-index",
-    "memory-lifecycle",
-    "memory-train",
+    "crates/memory-core",
+    "crates/memory-api",
+    "crates/memory-storage",
+    "crates/memory-index",
+    "crates/memory-lifecycle",
+    "crates/memory-train",
 ]
 
 resolver = "2"

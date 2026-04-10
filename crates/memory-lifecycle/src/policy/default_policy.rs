@@ -1,6 +1,5 @@
 //! Default transition policy implementation
 
-use chrono::{Duration, Utc};
 use memory_core::{MemoryEntry, MemoryStatus};
 
 use super::transition_policy::{PolicyConfig, TransitionPolicy};
@@ -46,9 +45,15 @@ impl TransitionPolicy for DefaultTransitionPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{Duration, Utc};
     use uuid::Uuid;
 
-    fn create_test_memory(status: MemoryStatus, days_since_update: i64, access_count: u64, importance: f32) -> MemoryEntry {
+    fn create_test_memory(
+        status: MemoryStatus,
+        days_since_update: i64,
+        access_count: u64,
+        importance: f32,
+    ) -> MemoryEntry {
         let now = Utc::now();
         MemoryEntry {
             id: Uuid::new_v4(),
@@ -57,7 +62,9 @@ mod tests {
             embedding: None,
             metadata: memory_core::MemoryMetadata {
                 tags: vec![],
-                source: memory_core::MemorySource::System { source_type: "test".to_string() },
+                source: memory_core::MemorySource::System {
+                    source_type: "test".to_string(),
+                },
                 custom_fields: Default::default(),
                 importance,
             },
@@ -73,7 +80,7 @@ mod tests {
     fn test_active_no_recent_access_transitions() {
         let policy = DefaultTransitionPolicy::new();
         let memory = create_test_memory(MemoryStatus::Active, 10, 0, 0.5);
-        
+
         assert!(policy.should_transition(&memory));
         assert_eq!(policy.get_next_status(&memory), Some(MemoryStatus::Cooling));
     }
@@ -82,7 +89,7 @@ mod tests {
     fn test_active_with_recent_access_stays() {
         let policy = DefaultTransitionPolicy::new();
         let memory = create_test_memory(MemoryStatus::Active, 1, 1, 0.5);
-        
+
         assert!(!policy.should_transition(&memory));
         assert_eq!(policy.get_next_status(&memory), None);
     }
@@ -91,7 +98,7 @@ mod tests {
     fn test_cooling_transitions_to_cold_after_time() {
         let policy = DefaultTransitionPolicy::new();
         let memory = create_test_memory(MemoryStatus::Cooling, 20, 0, 0.5);
-        
+
         assert!(policy.should_transition(&memory));
         assert_eq!(policy.get_next_status(&memory), Some(MemoryStatus::Cold));
     }
@@ -100,7 +107,7 @@ mod tests {
     fn test_cooling_stays_if_too_early() {
         let policy = DefaultTransitionPolicy::new();
         let memory = create_test_memory(MemoryStatus::Cooling, 5, 0, 0.5);
-        
+
         assert!(!policy.should_transition(&memory));
         assert_eq!(policy.get_next_status(&memory), None);
     }
@@ -109,7 +116,7 @@ mod tests {
     fn test_cold_low_importance_becomes_zombie() {
         let policy = DefaultTransitionPolicy::new();
         let memory = create_test_memory(MemoryStatus::Cold, 40, 0, 0.05);
-        
+
         assert!(policy.should_transition(&memory));
         assert_eq!(policy.get_next_status(&memory), Some(MemoryStatus::Zombie));
     }
@@ -118,7 +125,7 @@ mod tests {
     fn test_cold_high_importance_stays_cold() {
         let policy = DefaultTransitionPolicy::new();
         let memory = create_test_memory(MemoryStatus::Cold, 40, 0, 0.5);
-        
+
         assert!(!policy.should_transition(&memory));
         assert_eq!(policy.get_next_status(&memory), None);
     }
@@ -127,7 +134,7 @@ mod tests {
     fn test_cold_recently_accessed_stays() {
         let policy = DefaultTransitionPolicy::new();
         let memory = create_test_memory(MemoryStatus::Cold, 5, 1, 0.05);
-        
+
         assert!(!policy.should_transition(&memory));
         assert_eq!(policy.get_next_status(&memory), None);
     }
@@ -136,7 +143,7 @@ mod tests {
     fn test_zombie_never_transitions() {
         let policy = DefaultTransitionPolicy::new();
         let memory = create_test_memory(MemoryStatus::Zombie, 100, 0, 0.0);
-        
+
         assert!(!policy.should_transition(&memory));
         assert_eq!(policy.get_next_status(&memory), None);
     }
@@ -152,7 +159,7 @@ mod tests {
             min_importance_score: 0.2,
         };
         let policy = DefaultTransitionPolicy::with_config(config);
-        
+
         let memory = create_test_memory(MemoryStatus::Active, 5, 0, 0.5);
         assert!(policy.should_transition(&memory));
     }

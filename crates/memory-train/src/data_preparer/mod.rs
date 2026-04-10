@@ -1,7 +1,7 @@
 //! Data Preparer - Prepares training data from memory entries
 
-use memory_core::{MemoryEntry, MemoryContent, TrainData, WorkspaceId, SearchQuery, MemoryStatus};
 use crate::error::TrainError;
+use memory_core::{MemoryContent, MemoryEntry, MemoryStatus, SearchQuery, TrainData, WorkspaceId};
 
 /// Prepares training data from memory entries
 pub struct DataPreparer {
@@ -156,8 +156,10 @@ mod tests {
         MemoryEntry::new(
             workspace_id,
             MemoryContent::Text(text.to_string()),
-            MemoryMetadata::new(memory_core::MemorySource::System { source_type: "test".to_string() })
-                .with_tags(tags.into_iter().map(|s| s.to_string()).collect()),
+            MemoryMetadata::new(memory_core::MemorySource::System {
+                source_type: "test".to_string(),
+            })
+            .with_tags(tags.into_iter().map(|s| s.to_string()).collect()),
         )
     }
 
@@ -190,7 +192,10 @@ mod tests {
         let preparer = DataPreparer::new().with_min_text_length(50);
         let memories = vec![
             create_test_memory("Short", vec![]),
-            create_test_memory("This is a much longer text that should pass the filter", vec![]),
+            create_test_memory(
+                "This is a much longer text that should pass the filter",
+                vec![],
+            ),
         ];
 
         let result = preparer.prepare(memories);
@@ -209,7 +214,9 @@ mod tests {
                 code: "fn main() {}".to_string(),
                 ast_hash: None,
             }),
-            MemoryMetadata::new(memory_core::MemorySource::System { source_type: "test".to_string() }),
+            MemoryMetadata::new(memory_core::MemorySource::System {
+                source_type: "test".to_string(),
+            }),
         );
 
         let result = preparer.prepare(vec![memory]);
@@ -219,9 +226,10 @@ mod tests {
     #[test]
     fn test_extract_labels_disabled() {
         let preparer = DataPreparer::new().with_extract_labels(false);
-        let memories = vec![
-            create_test_memory("Sample text for training", vec!["tag1", "tag2"]),
-        ];
+        let memories = vec![create_test_memory(
+            "Sample text for training",
+            vec!["tag1", "tag2"],
+        )];
 
         let result = preparer.prepare(memories);
         assert!(result.is_ok());

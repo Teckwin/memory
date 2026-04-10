@@ -55,11 +55,11 @@ impl HybridIndex {
     /// Create a new HybridIndex with the given configuration
     pub fn new(config: HybridConfig) -> Self {
         info!("Creating new HybridIndex");
-        
+
         // Validate weights
         let vector_weight = config.vector_weight;
         let fulltext_weight = config.fulltext_weight;
-        
+
         if vector_weight + fulltext_weight > 1.0 {
             info!(
                 "Weights sum to {} > 1.0, normalizing",
@@ -98,8 +98,8 @@ impl HybridIndex {
 
     /// Check if index is initialized
     pub fn is_initialized(&self) -> bool {
-        self.vector_index.is_some() 
-            && self.fulltext_index.is_some() 
+        self.vector_index.is_some()
+            && self.fulltext_index.is_some()
             && self.metadata_index.is_some()
     }
 
@@ -162,10 +162,7 @@ impl HybridIndex {
     }
 
     /// Perform hybrid search combining vector and full-text results
-    pub async fn search(
-        &self,
-        query: &SearchQuery,
-    ) -> Result<Vec<SearchResult>, IndexError> {
+    pub async fn search(&self, query: &SearchQuery) -> Result<Vec<SearchResult>, IndexError> {
         let workspace_id = query.workspace_id;
         let limit = query.limit;
         let tags = query.tags.clone();
@@ -183,7 +180,7 @@ impl HybridIndex {
 
                 for (i, memory_id) in ft_results.iter().enumerate() {
                     let score = 1.0 - (i as f32 / ft_results.len() as f32);
-                    *candidate_scores.entry(*memory_id).or_insert(0.0) += 
+                    *candidate_scores.entry(*memory_id).or_insert(0.0) +=
                         score * self.config.fulltext_weight;
                 }
             }
@@ -193,10 +190,8 @@ impl HybridIndex {
         if let Some(ref metadata_index) = self.metadata_index {
             // Get IDs matching tags
             if let Some(ref query_tags) = tags {
-                let tag_results = metadata_index
-                    .get_by_tags(query_tags, workspace_id)
-                    .await;
-                
+                let tag_results = metadata_index.get_by_tags(query_tags, workspace_id).await;
+
                 for memory_id in tag_results {
                     *candidate_scores.entry(memory_id).or_insert(0.0) += 0.1;
                 }
@@ -204,10 +199,8 @@ impl HybridIndex {
 
             // Get IDs matching status
             if let Some(status) = query.status {
-                let status_results = metadata_index
-                    .get_by_status(status, workspace_id)
-                    .await;
-                
+                let status_results = metadata_index.get_by_status(status, workspace_id).await;
+
                 for memory_id in status_results {
                     *candidate_scores.entry(memory_id).or_insert(0.0) += 0.1;
                 }
@@ -218,7 +211,7 @@ impl HybridIndex {
                 let date_results = metadata_index
                     .get_by_date_range(date_range, workspace_id)
                     .await;
-                
+
                 for memory_id in date_results {
                     *candidate_scores.entry(memory_id).or_insert(0.0) += 0.1;
                 }
@@ -353,8 +346,8 @@ impl HybridIndex {
         let mut final_scores: Vec<_> = combined_scores
             .into_iter()
             .map(|(id, (v_score, ft_score, _))| {
-                let combined = v_score * self.config.vector_weight 
-                    + ft_score * self.config.fulltext_weight;
+                let combined =
+                    v_score * self.config.vector_weight + ft_score * self.config.fulltext_weight;
                 (id, combined)
             })
             .collect();
@@ -466,7 +459,9 @@ mod tests {
         embedding_dim: usize,
     ) -> MemoryEntry {
         let embedding: Vec<f32> = if embedding_dim > 0 {
-            (0..embedding_dim).map(|i| (i as f32) / embedding_dim as f32).collect()
+            (0..embedding_dim)
+                .map(|i| (i as f32) / embedding_dim as f32)
+                .collect()
         } else {
             vec![]
         };
@@ -475,11 +470,17 @@ mod tests {
             id: Uuid::new_v4(),
             workspace_id,
             content: MemoryContent::Text(content.to_string()),
-            embedding: if embedding.is_empty() { None } else { Some(embedding) },
+            embedding: if embedding.is_empty() {
+                None
+            } else {
+                Some(embedding)
+            },
             metadata: MemoryMetadata {
                 tags,
                 importance: 0.5,
-                source: MemorySource::System { source_type: "test".to_string() },
+                source: MemorySource::System {
+                    source_type: "test".to_string(),
+                },
                 custom_fields: HashMap::new(),
             },
             status: MemoryStatus::Active,
@@ -519,8 +520,18 @@ mod tests {
 
         let workspace_id = Uuid::new_v4();
 
-        let mem1 = create_test_memory(workspace_id, "Rust programming language", vec!["programming".to_string()], 0);
-        let mem2 = create_test_memory(workspace_id, "Python for data science", vec!["programming".to_string()], 0);
+        let mem1 = create_test_memory(
+            workspace_id,
+            "Rust programming language",
+            vec!["programming".to_string()],
+            0,
+        );
+        let mem2 = create_test_memory(
+            workspace_id,
+            "Python for data science",
+            vec!["programming".to_string()],
+            0,
+        );
         let mem3 = create_test_memory(workspace_id, "Cooking recipes", vec!["food".to_string()], 0);
 
         index.add(&mem1).await.unwrap();
@@ -548,7 +559,12 @@ mod tests {
 
         let mem1 = create_test_memory(workspace_id, "Content 1", vec!["rust".to_string()], 0);
         let mem2 = create_test_memory(workspace_id, "Content 2", vec!["python".to_string()], 0);
-        let mem3 = create_test_memory(workspace_id, "Content 3", vec!["rust".to_string(), "python".to_string()], 0);
+        let mem3 = create_test_memory(
+            workspace_id,
+            "Content 3",
+            vec!["rust".to_string(), "python".to_string()],
+            0,
+        );
 
         index.add(&mem1).await.unwrap();
         index.add(&mem2).await.unwrap();
@@ -642,14 +658,19 @@ mod tests {
     async fn test_hybrid_search_combines_results() {
         let mut config = HybridConfig::default();
         config.vector_config.dimension = 128;
-        
+
         let mut index = HybridIndex::new(config);
         index.initialize().await.unwrap();
 
         let workspace_id = Uuid::new_v4();
 
         // Add memory with both embedding and text
-        let mem = create_test_memory(workspace_id, "Rust async programming", vec!["rust".to_string()], 128);
+        let mem = create_test_memory(
+            workspace_id,
+            "Rust async programming",
+            vec!["rust".to_string()],
+            128,
+        );
         index.add(&mem).await.unwrap();
 
         // Perform hybrid search

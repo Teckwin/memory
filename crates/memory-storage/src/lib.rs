@@ -1,5 +1,5 @@
 //! Memory Storage - Multi-tier storage for memories
-//! 
+//!
 //! This module provides three storage tiers:
 //! - **Hot Storage**: In-memory cache for Active memories (fast access)
 //! - **Cold Storage**: SQLite database for Cold/Cooling memories
@@ -12,22 +12,22 @@
 //! - Cooling/Cold memories are persisted to SQLite
 //! - Zombie memories are archived to files
 
+pub mod cold;
 pub mod error;
 pub mod hot;
-pub mod cold;
 pub mod zombie;
 
+pub use cold::ColdStorage;
 pub use error::StorageError;
 pub use hot::HotStorage;
-pub use cold::ColdStorage;
 pub use zombie::ZombieStorage;
 
-use std::sync::Arc;
 use async_trait::async_trait;
+use std::sync::Arc;
 
-use memory_core::{MemoryId, MemoryEntry, MemoryStatus, WorkspaceId,
-    SearchQuery, SearchResult, BatchResult,
-    MemoryApi, MemoryError, LifecycleApi,
+use memory_core::{
+    BatchResult, LifecycleApi, MemoryApi, MemoryEntry, MemoryError, MemoryId, MemoryStatus,
+    SearchQuery, SearchResult, WorkspaceId,
 };
 
 /// Unified storage that delegates to appropriate tier based on memory status
@@ -82,7 +82,12 @@ impl UnifiedStorage {
     }
 
     /// Move memory between tiers
-    pub async fn migrate(&self, id: MemoryId, from_status: MemoryStatus, to_status: MemoryStatus) -> Result<(), MemoryError> {
+    pub async fn migrate(
+        &self,
+        id: MemoryId,
+        from_status: MemoryStatus,
+        to_status: MemoryStatus,
+    ) -> Result<(), MemoryError> {
         // Get from source
         let memory = match from_status {
             MemoryStatus::Active => self.hot.get(id).await,
@@ -92,9 +97,15 @@ impl UnifiedStorage {
 
         // Remove from source
         match from_status {
-            MemoryStatus::Active => { self.hot.remove(id).await; }
-            MemoryStatus::Cooling | MemoryStatus::Cold => { self.cold.delete(id).await?; }
-            MemoryStatus::Zombie => { self.zombie.delete(id).await?; }
+            MemoryStatus::Active => {
+                self.hot.remove(id).await;
+            }
+            MemoryStatus::Cooling | MemoryStatus::Cold => {
+                self.cold.delete(id).await?;
+            }
+            MemoryStatus::Zombie => {
+                self.zombie.delete(id).await?;
+            }
         }
 
         // Insert to destination with new status
@@ -153,7 +164,11 @@ impl MemoryApi for UnifiedStorage {
         self.zombie.delete(id).await
     }
 
-    async fn list(&self, workspace_id: WorkspaceId, query: SearchQuery) -> Result<Vec<SearchResult>, MemoryError> {
+    async fn list(
+        &self,
+        workspace_id: WorkspaceId,
+        query: SearchQuery,
+    ) -> Result<Vec<SearchResult>, MemoryError> {
         // If status is specified, query only that tier
         if let Some(status) = query.status {
             let storage = self.get_storage_for_status(status);
@@ -304,7 +319,10 @@ impl LifecycleApi for UnifiedStorage {
         self.migrate(id, current_status, new_status).await
     }
 
-    async fn get_transition_candidates(&self, _status: MemoryStatus) -> Result<Vec<MemoryId>, MemoryError> {
+    async fn get_transition_candidates(
+        &self,
+        _status: MemoryStatus,
+    ) -> Result<Vec<MemoryId>, MemoryError> {
         // For now, return empty - this would be implemented based on lifecycle policy
         // In a full implementation, this would query based on access patterns,
         // age, importance, etc.
@@ -332,7 +350,10 @@ impl LifecycleApi for UnifiedStorage {
 
         for search_result in cold_memories {
             let memory = search_result.memory;
-            if let Err(e) = self.migrate(memory.id, MemoryStatus::Cold, MemoryStatus::Zombie).await {
+            if let Err(e) = self
+                .migrate(memory.id, MemoryStatus::Cold, MemoryStatus::Zombie)
+                .await
+            {
                 result.add_failure(format!("{}: {}", memory.id, e));
             } else {
                 result.add_success();
@@ -346,8 +367,8 @@ impl LifecycleApi for UnifiedStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use memory_core::{MemoryContent, MemoryMetadata};
+    use tempfile::tempdir;
 
     fn create_test_memory(status: MemoryStatus) -> MemoryEntry {
         MemoryEntry {
@@ -355,9 +376,10 @@ mod tests {
             workspace_id: uuid::Uuid::new_v4(),
             content: MemoryContent::Text("test content".to_string()),
             embedding: None,
-            metadata: MemoryMetadata::new(memory_core::MemorySource::UserQuery { 
-                query: "test".to_string() 
-            }).with_tags(vec!["test".to_string()]),
+            metadata: MemoryMetadata::new(memory_core::MemorySource::UserQuery {
+                query: "test".to_string(),
+            })
+            .with_tags(vec!["test".to_string()]),
             status,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

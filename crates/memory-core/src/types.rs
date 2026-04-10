@@ -29,7 +29,11 @@ pub struct MemoryEntry {
 }
 
 impl MemoryEntry {
-    pub fn new(workspace_id: WorkspaceId, content: MemoryContent, metadata: MemoryMetadata) -> Self {
+    pub fn new(
+        workspace_id: WorkspaceId,
+        content: MemoryContent,
+        metadata: MemoryMetadata,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
@@ -112,8 +116,8 @@ impl FileType {
     pub fn from_extension(ext: &str) -> Self {
         match ext.to_lowercase().as_str() {
             // Source code
-            "rs" | "js" | "ts" | "jsx" | "tsx" | "py" | "go" | "java" | "c" | "cpp" | "h" | "hpp"
-            | "cs" | "rb" | "php" | "swift" | "kt" | "scala" | "vue" | "svelte" => {
+            "rs" | "js" | "ts" | "jsx" | "tsx" | "py" | "go" | "java" | "c" | "cpp" | "h"
+            | "hpp" | "cs" | "rb" | "php" | "swift" | "kt" | "scala" | "vue" | "svelte" => {
                 FileType::SourceCode
             }
             // Documentation
@@ -159,7 +163,8 @@ impl MemoryMetadata {
     }
 
     pub fn set_custom_field(&mut self, key: &str, value: &str) {
-        self.custom_fields.insert(key.to_string(), value.to_string());
+        self.custom_fields
+            .insert(key.to_string(), value.to_string());
     }
 }
 
@@ -174,18 +179,13 @@ pub enum MemorySource {
 }
 
 /// Memory lifecycle status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MemoryStatus {
+    #[default]
     Active,
     Cooling,
     Cold,
     Zombie,
-}
-
-impl Default for MemoryStatus {
-    fn default() -> Self {
-        MemoryStatus::Active
-    }
 }
 
 impl fmt::Display for MemoryStatus {
@@ -353,16 +353,16 @@ mod tests {
 
         // Verify ID is generated
         assert_ne!(entry.id, Uuid::nil());
-        
+
         // Verify workspace_id matches
         assert_eq!(entry.workspace_id, workspace_id);
-        
+
         // Verify default values
         assert!(entry.embedding.is_none());
         assert_eq!(entry.status, MemoryStatus::Active);
         assert_eq!(entry.access_count, 0);
         assert!(entry.last_accessed.is_none());
-        
+
         // Verify timestamps are set
         assert!(entry.created_at <= Utc::now());
         assert!(entry.updated_at <= Utc::now());
@@ -377,20 +377,20 @@ mod tests {
         });
 
         let mut entry = MemoryEntry::new(workspace_id, content, metadata);
-        
+
         assert_eq!(entry.access_count, 0);
         assert!(entry.last_accessed.is_none());
-        
+
         // First access
         entry.increment_access();
         assert_eq!(entry.access_count, 1);
         assert!(entry.last_accessed.is_some());
-        
+
         let first_access = entry.last_accessed;
-        
+
         // Small delay to ensure different timestamps
         std::thread::sleep(std::time::Duration::from_millis(10));
-        
+
         // Second access
         entry.increment_access();
         assert_eq!(entry.access_count, 2);
@@ -403,7 +403,7 @@ mod tests {
     #[test]
     fn test_memory_content_text() {
         let content = MemoryContent::text("hello world");
-        
+
         match content {
             MemoryContent::Text(s) => assert_eq!(s, "hello world"),
             _ => panic!("Expected Text variant"),
@@ -413,7 +413,7 @@ mod tests {
     #[test]
     fn test_memory_content_code() {
         let content = MemoryContent::code("rust", "fn main() {}");
-        
+
         match content {
             MemoryContent::Code(code) => {
                 assert_eq!(code.language, "rust");
@@ -428,10 +428,10 @@ mod tests {
     fn test_memory_content_as_text() {
         let text_content = MemoryContent::text("hello");
         assert_eq!(text_content.as_text(), Some("hello"));
-        
+
         let code_content = MemoryContent::code("rust", "fn main() {}");
         assert_eq!(code_content.as_text(), None);
-        
+
         let file_content = MemoryContent::File(FileContent {
             path: PathBuf::from("test.rs"),
             content: "".to_string(),
@@ -447,7 +447,7 @@ mod tests {
             MemoryContent::code("js", "console.log(1)"),
         ];
         let composite = MemoryContent::Composite(contents);
-        
+
         match composite {
             MemoryContent::Composite(items) => assert_eq!(items.len(), 2),
             _ => panic!("Expected Composite variant"),
@@ -458,12 +458,20 @@ mod tests {
 
     #[test]
     fn test_file_type_from_extension_source_code() {
-        let extensions = vec!["rs", "js", "ts", "jsx", "tsx", "py", "go", "java", "c", "cpp", "h", "hpp", "cs", "rb", "php", "swift", "kt", "scala", "vue", "svelte"];
-        
+        let extensions = vec![
+            "rs", "js", "ts", "jsx", "tsx", "py", "go", "java", "c", "cpp", "h", "hpp", "cs", "rb",
+            "php", "swift", "kt", "scala", "vue", "svelte",
+        ];
+
         for ext in extensions {
-            assert_eq!(FileType::from_extension(ext), FileType::SourceCode, "Failed for extension: {}", ext);
+            assert_eq!(
+                FileType::from_extension(ext),
+                FileType::SourceCode,
+                "Failed for extension: {}",
+                ext
+            );
         }
-        
+
         // Test case insensitivity
         assert_eq!(FileType::from_extension("RS"), FileType::SourceCode);
         assert_eq!(FileType::from_extension("JS"), FileType::SourceCode);
@@ -473,27 +481,44 @@ mod tests {
     #[test]
     fn test_file_type_from_extension_documentation() {
         let extensions = vec!["md", "txt", "rst", "adoc", "tex"];
-        
+
         for ext in extensions {
-            assert_eq!(FileType::from_extension(ext), FileType::Documentation, "Failed for extension: {}", ext);
+            assert_eq!(
+                FileType::from_extension(ext),
+                FileType::Documentation,
+                "Failed for extension: {}",
+                ext
+            );
         }
     }
 
     #[test]
     fn test_file_type_from_extension_configuration() {
-        let extensions = vec!["json", "yaml", "yml", "toml", "xml", "ini", "env", "conf", "config"];
-        
+        let extensions = vec![
+            "json", "yaml", "yml", "toml", "xml", "ini", "env", "conf", "config",
+        ];
+
         for ext in extensions {
-            assert_eq!(FileType::from_extension(ext), FileType::Configuration, "Failed for extension: {}", ext);
+            assert_eq!(
+                FileType::from_extension(ext),
+                FileType::Configuration,
+                "Failed for extension: {}",
+                ext
+            );
         }
     }
 
     #[test]
     fn test_file_type_from_extension_data() {
         let extensions = vec!["csv", "tsv", "sql", "parquet", "arrow"];
-        
+
         for ext in extensions {
-            assert_eq!(FileType::from_extension(ext), FileType::Data, "Failed for extension: {}", ext);
+            assert_eq!(
+                FileType::from_extension(ext),
+                FileType::Data,
+                "Failed for extension: {}",
+                ext
+            );
         }
     }
 
@@ -508,9 +533,11 @@ mod tests {
 
     #[test]
     fn test_memory_metadata_new() {
-        let source = MemorySource::File { path: PathBuf::from("/test.rs") };
+        let source = MemorySource::File {
+            path: PathBuf::from("/test.rs"),
+        };
         let metadata = MemoryMetadata::new(source.clone());
-        
+
         assert_eq!(metadata.source, source);
         assert!(metadata.tags.is_empty());
         assert!(metadata.custom_fields.is_empty());
@@ -519,28 +546,37 @@ mod tests {
 
     #[test]
     fn test_memory_metadata_with_importance() {
-        let source = MemorySource::System { source_type: "test".to_string() };
+        let source = MemorySource::System {
+            source_type: "test".to_string(),
+        };
         let metadata = MemoryMetadata::new(source).with_importance(0.9);
-        
+
         assert_eq!(metadata.importance, 0.9);
     }
 
     #[test]
     fn test_memory_metadata_with_tags() {
-        let source = MemorySource::UserQuery { query: "test".to_string() };
-        let metadata = MemoryMetadata::new(source)
-            .with_tags(vec!["tag1".to_string(), "tag2".to_string()]);
-        
+        let source = MemorySource::UserQuery {
+            query: "test".to_string(),
+        };
+        let metadata =
+            MemoryMetadata::new(source).with_tags(vec!["tag1".to_string(), "tag2".to_string()]);
+
         assert_eq!(metadata.tags, vec!["tag1", "tag2"]);
     }
 
     #[test]
     fn test_memory_metadata_with_custom_field() {
-        let source = MemorySource::File { path: PathBuf::from("/test.rs") };
+        let source = MemorySource::File {
+            path: PathBuf::from("/test.rs"),
+        };
         let mut metadata = MemoryMetadata::new(source);
         metadata.set_custom_field("key1", "value1");
-        
-        assert_eq!(metadata.custom_fields.get("key1"), Some(&"value1".to_string()));
+
+        assert_eq!(
+            metadata.custom_fields.get("key1"),
+            Some(&"value1".to_string())
+        );
     }
 
     // ==================== Workspace Tests ====================
@@ -548,11 +584,11 @@ mod tests {
     #[test]
     fn test_workspace_new() {
         let workspace = Workspace::new("test workspace".to_string());
-        
+
         assert_ne!(workspace.id, Uuid::nil());
         assert_eq!(workspace.name, "test workspace");
         assert!(workspace.description.is_none());
-        
+
         // Verify default config
         assert_eq!(workspace.config.max_memory_size, 10_000_000);
         assert_eq!(workspace.config.retention_days, 90);
@@ -562,16 +598,16 @@ mod tests {
 
     #[test]
     fn test_workspace_with_description() {
-        let workspace = Workspace::new("test".to_string())
-            .with_description("A test workspace".to_string());
-        
+        let workspace =
+            Workspace::new("test".to_string()).with_description("A test workspace".to_string());
+
         assert_eq!(workspace.description, Some("A test workspace".to_string()));
     }
 
     #[test]
     fn test_workspace_default_config() {
         let config = WorkspaceConfig::default();
-        
+
         assert_eq!(config.max_memory_size, 10_000_000);
         assert_eq!(config.retention_days, 90);
         assert!(config.auto_archive);
@@ -583,7 +619,7 @@ mod tests {
     #[test]
     fn test_search_query_default() {
         let query = SearchQuery::default();
-        
+
         assert!(query.text.is_none());
         assert!(query.tags.is_none());
         assert!(query.workspace_id.is_none());
@@ -598,7 +634,7 @@ mod tests {
     #[test]
     fn test_batch_result_new() {
         let result = BatchResult::new();
-        
+
         assert_eq!(result.success_count, 0);
         assert_eq!(result.failure_count, 0);
         assert!(result.errors.is_empty());
@@ -607,7 +643,7 @@ mod tests {
     #[test]
     fn test_batch_result_default() {
         let result = BatchResult::default();
-        
+
         assert_eq!(result.success_count, 0);
         assert_eq!(result.failure_count, 0);
     }
@@ -615,10 +651,10 @@ mod tests {
     #[test]
     fn test_batch_result_add_success() {
         let mut result = BatchResult::new();
-        
+
         result.add_success();
         assert_eq!(result.success_count, 1);
-        
+
         result.add_success();
         assert_eq!(result.success_count, 2);
     }
@@ -626,12 +662,12 @@ mod tests {
     #[test]
     fn test_batch_result_add_failure() {
         let mut result = BatchResult::new();
-        
+
         result.add_failure("error 1".to_string());
         assert_eq!(result.failure_count, 1);
         assert_eq!(result.errors.len(), 1);
         assert_eq!(result.errors[0], "error 1");
-        
+
         result.add_failure("error 2".to_string());
         assert_eq!(result.failure_count, 2);
         assert_eq!(result.errors.len(), 2);
@@ -642,7 +678,7 @@ mod tests {
     #[test]
     fn test_memory_stats_default() {
         let stats = MemoryStats::default();
-        
+
         assert_eq!(stats.total_memories, 0);
         assert_eq!(stats.active_count, 0);
         assert_eq!(stats.cooling_count, 0);
@@ -663,7 +699,7 @@ mod tests {
             total_size_bytes: 1_000_000,
             average_importance: 0.75,
         };
-        
+
         assert_eq!(stats.total_memories, 100);
         assert_eq!(stats.active_count, 50);
         assert_eq!(stats.cooling_count, 20);
@@ -693,32 +729,32 @@ mod tests {
 
     #[test]
     fn test_memory_source_variants() {
-        let file_source = MemorySource::File { 
-            path: PathBuf::from("/test.rs") 
+        let file_source = MemorySource::File {
+            path: PathBuf::from("/test.rs"),
         };
         match file_source {
             MemorySource::File { path } => assert_eq!(path, PathBuf::from("/test.rs")),
             _ => panic!("Expected File variant"),
         }
 
-        let query_source = MemorySource::UserQuery { 
-            query: "test query".to_string() 
+        let query_source = MemorySource::UserQuery {
+            query: "test query".to_string(),
         };
         match query_source {
             MemorySource::UserQuery { query } => assert_eq!(query, "test query"),
             _ => panic!("Expected UserQuery variant"),
         }
 
-        let system_source = MemorySource::System { 
-            source_type: "auto".to_string() 
+        let system_source = MemorySource::System {
+            source_type: "auto".to_string(),
         };
         match system_source {
             MemorySource::System { source_type } => assert_eq!(source_type, "auto"),
             _ => panic!("Expected System variant"),
         }
 
-        let training_source = MemorySource::Training { 
-            model_id: Uuid::nil() 
+        let training_source = MemorySource::Training {
+            model_id: Uuid::nil(),
         };
         match training_source {
             MemorySource::Training { model_id } => assert_eq!(model_id, Uuid::nil()),

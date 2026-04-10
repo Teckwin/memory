@@ -15,10 +15,7 @@ pub enum IndexError {
     OperationFailed(String),
 
     #[error("Invalid dimension: expected {expected}, got {got}")]
-    InvalidDimension {
-        expected: usize,
-        got: usize,
-    },
+    InvalidDimension { expected: usize, got: usize },
 
     #[error("Invalid query: {0}")]
     InvalidQuery(String),
@@ -85,10 +82,7 @@ mod tests {
             expected: 384,
             got: 128,
         };
-        assert_eq!(
-            err.to_string(),
-            "Invalid dimension: expected 384, got 128"
-        );
+        assert_eq!(err.to_string(), "Invalid dimension: expected 384, got 128");
     }
 
     #[test]

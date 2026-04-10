@@ -2,14 +2,12 @@
 
 use async_trait::async_trait;
 use memory_core::{
-    MemoryApi, SearchApi, WorkspaceApi, 
-    MemoryEntry, MemoryId, WorkspaceId, Workspace,
-    SearchQuery, SearchResult, BatchResult, MemoryStats,
-    MemoryError,
+    BatchResult, MemoryApi, MemoryEntry, MemoryError, MemoryId, MemoryStats, SearchApi,
+    SearchQuery, SearchResult, Workspace, WorkspaceApi, WorkspaceId,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 /// Configuration for MemoryClient
 #[derive(Debug, Clone, PartialEq)]
@@ -28,7 +26,7 @@ impl Default for ClientConfig {
 }
 
 /// Memory client that implements core traits
-/// 
+///
 /// This client wraps underlying storage and index implementations,
 /// providing a unified API for memory operations.
 pub struct MemoryClient {
@@ -79,24 +77,28 @@ impl Default for MemoryClient {
 impl MemoryApi for MemoryClient {
     async fn add(&self, memory: MemoryEntry) -> Result<MemoryId, MemoryError> {
         debug!("Adding memory: {}", memory.id);
-        
+
         if !self.is_storage_enabled() {
-            return Err(MemoryError::InvalidOperation("Storage is disabled".to_string()));
+            return Err(MemoryError::InvalidOperation(
+                "Storage is disabled".to_string(),
+            ));
         }
 
         let id = memory.id;
         let mut memories = self.memories.write().await;
         memories.insert(id, memory);
-        
+
         info!("Memory added successfully: {}", id);
         Ok(id)
     }
 
     async fn get(&self, id: MemoryId) -> Result<MemoryEntry, MemoryError> {
         debug!("Getting memory: {}", id);
-        
+
         if !self.is_storage_enabled() {
-            return Err(MemoryError::InvalidOperation("Storage is disabled".to_string()));
+            return Err(MemoryError::InvalidOperation(
+                "Storage is disabled".to_string(),
+            ));
         }
 
         let memories = self.memories.read().await;
@@ -108,25 +110,32 @@ impl MemoryApi for MemoryClient {
 
     async fn update(&self, memory: MemoryEntry) -> Result<(), MemoryError> {
         debug!("Updating memory: {}", memory.id);
-        
+
         if !self.is_storage_enabled() {
-            return Err(MemoryError::InvalidOperation("Storage is disabled".to_string()));
+            return Err(MemoryError::InvalidOperation(
+                "Storage is disabled".to_string(),
+            ));
         }
 
         let mut memories = self.memories.write().await;
-        if memories.contains_key(&memory.id) {
-            memories.insert(memory.id, memory);
-            Ok(())
-        } else {
-            Err(MemoryError::NotFound(memory.id.to_string()))
+        match memories.entry(memory.id) {
+            std::collections::hash_map::Entry::Occupied(mut e) => {
+                e.insert(memory);
+                Ok(())
+            }
+            std::collections::hash_map::Entry::Vacant(_) => {
+                Err(MemoryError::NotFound(memory.id.to_string()))
+            }
         }
     }
 
     async fn delete(&self, id: MemoryId) -> Result<(), MemoryError> {
         debug!("Deleting memory: {}", id);
-        
+
         if !self.is_storage_enabled() {
-            return Err(MemoryError::InvalidOperation("Storage is disabled".to_string()));
+            return Err(MemoryError::InvalidOperation(
+                "Storage is disabled".to_string(),
+            ));
         }
 
         let mut memories = self.memories.write().await;
@@ -139,14 +148,16 @@ impl MemoryApi for MemoryClient {
     }
 
     async fn list(
-        &self, 
-        workspace_id: WorkspaceId, 
-        query: SearchQuery
+        &self,
+        workspace_id: WorkspaceId,
+        query: SearchQuery,
     ) -> Result<Vec<SearchResult>, MemoryError> {
         debug!("Listing memories for workspace: {}", workspace_id);
-        
+
         if !self.is_storage_enabled() {
-            return Err(MemoryError::InvalidOperation("Storage is disabled".to_string()));
+            return Err(MemoryError::InvalidOperation(
+                "Storage is disabled".to_string(),
+            ));
         }
 
         let memories = self.memories.read().await;
@@ -179,7 +190,9 @@ impl MemoryApi for MemoryClient {
         if let Some(text) = &query.text {
             let search_text = text.to_lowercase();
             results.retain(|r| {
-                r.memory.content.as_text()
+                r.memory
+                    .content
+                    .as_text()
                     .map(|t| t.to_lowercase().contains(&search_text))
                     .unwrap_or(false)
             });
@@ -190,9 +203,11 @@ impl MemoryApi for MemoryClient {
 
     async fn batch_add(&self, memories: Vec<MemoryEntry>) -> Result<BatchResult, MemoryError> {
         info!("Batch adding {} memories", memories.len());
-        
+
         if !self.is_storage_enabled() {
-            return Err(MemoryError::InvalidOperation("Storage is disabled".to_string()));
+            return Err(MemoryError::InvalidOperation(
+                "Storage is disabled".to_string(),
+            ));
         }
 
         let mut result = BatchResult::new();
@@ -211,9 +226,11 @@ impl MemoryApi for MemoryClient {
 
     async fn batch_delete(&self, ids: Vec<MemoryId>) -> Result<BatchResult, MemoryError> {
         info!("Batch deleting {} memories", ids.len());
-        
+
         if !self.is_storage_enabled() {
-            return Err(MemoryError::InvalidOperation("Storage is disabled".to_string()));
+            return Err(MemoryError::InvalidOperation(
+                "Storage is disabled".to_string(),
+            ));
         }
 
         let mut result = BatchResult::new();
@@ -235,7 +252,7 @@ impl MemoryApi for MemoryClient {
 impl SearchApi for MemoryClient {
     async fn search(&self, query: SearchQuery) -> Result<Vec<SearchResult>, MemoryError> {
         debug!("Full-text search: {:?}", query.text);
-        
+
         if !self.is_index_enabled() {
             return Err(MemoryError::IndexError("Index is disabled".to_string()));
         }
@@ -253,7 +270,11 @@ impl SearchApi for MemoryClient {
             all_results.extend(results);
         }
 
-        all_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        all_results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         Ok(all_results)
     }
@@ -264,14 +285,17 @@ impl SearchApi for MemoryClient {
         embedding: &[f32],
         limit: usize,
     ) -> Result<Vec<SearchResult>, MemoryError> {
-        debug!("Vector search for workspace: {}, limit: {}", workspace_id, limit);
-        
+        debug!(
+            "Vector search for workspace: {}, limit: {}",
+            workspace_id, limit
+        );
+
         if !self.is_index_enabled() {
             return Err(MemoryError::IndexError("Index is disabled".to_string()));
         }
 
         let memories = self.memories.read().await;
-        
+
         let mut results: Vec<SearchResult> = memories
             .values()
             .filter(|m| m.workspace_id == workspace_id)
@@ -287,7 +311,11 @@ impl SearchApi for MemoryClient {
             })
             .collect();
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(limit);
 
         Ok(results)
@@ -301,7 +329,7 @@ impl SearchApi for MemoryClient {
         limit: usize,
     ) -> Result<Vec<SearchResult>, MemoryError> {
         debug!("Hybrid search for workspace: {}", workspace_id);
-        
+
         if !self.is_index_enabled() {
             return Err(MemoryError::IndexError("Index is disabled".to_string()));
         }
@@ -316,29 +344,39 @@ impl SearchApi for MemoryClient {
 
         let vector_results = self.vector_search(workspace_id, embedding, limit).await?;
 
-        let mut merged: std::collections::HashMap<MemoryId, (f32, SearchResult)> = std::collections::HashMap::new();
-        
+        let mut merged: std::collections::HashMap<MemoryId, (f32, SearchResult)> =
+            std::collections::HashMap::new();
+
         for r in text_results {
-            let entry = merged.entry(r.memory.id).or_insert_with(|| (0.0, r.clone()));
+            let entry = merged
+                .entry(r.memory.id)
+                .or_insert_with(|| (0.0, r.clone()));
             entry.0 += r.score;
         }
-        
+
         for r in vector_results {
-            let entry = merged.entry(r.memory.id).or_insert_with(|| (0.0, r.clone()));
+            let entry = merged
+                .entry(r.memory.id)
+                .or_insert_with(|| (0.0, r.clone()));
             entry.0 += r.score;
             if r.score > entry.1.score {
                 entry.1 = r;
             }
         }
 
-        let mut results: Vec<_> = merged.into_values()
+        let mut results: Vec<_> = merged
+            .into_values()
             .map(|(sum, mut r)| {
                 r.score = sum / 2.0;
                 r
             })
             .collect();
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(limit);
 
         Ok(results)
@@ -349,17 +387,17 @@ impl SearchApi for MemoryClient {
 impl WorkspaceApi for MemoryClient {
     async fn create(&self, workspace: Workspace) -> Result<WorkspaceId, MemoryError> {
         info!("Creating workspace: {}", workspace.name);
-        
+
         let id = workspace.id;
         let mut workspaces = self.workspaces.write().await;
         workspaces.insert(id, workspace);
-        
+
         Ok(id)
     }
 
     async fn get(&self, id: WorkspaceId) -> Result<Workspace, MemoryError> {
         debug!("Getting workspace: {}", id);
-        
+
         let workspaces = self.workspaces.read().await;
         workspaces
             .get(&id)
@@ -369,54 +407,68 @@ impl WorkspaceApi for MemoryClient {
 
     async fn update(&self, workspace: Workspace) -> Result<(), MemoryError> {
         debug!("Updating workspace: {}", workspace.id);
-        
+
         let mut workspaces = self.workspaces.write().await;
-        if workspaces.contains_key(&workspace.id) {
-            workspaces.insert(workspace.id, workspace);
-            Ok(())
-        } else {
-            Err(MemoryError::WorkspaceError(format!("Workspace not found: {}", workspace.id)))
+        match workspaces.entry(workspace.id) {
+            std::collections::hash_map::Entry::Occupied(mut e) => {
+                e.insert(workspace);
+                Ok(())
+            }
+            std::collections::hash_map::Entry::Vacant(_) => Err(MemoryError::WorkspaceError(
+                format!("Workspace not found: {}", workspace.id),
+            )),
         }
     }
 
     async fn delete(&self, id: WorkspaceId) -> Result<(), MemoryError> {
         info!("Deleting workspace: {}", id);
-        
+
         let mut memories = self.memories.write().await;
         memories.retain(|_, m| m.workspace_id != id);
-        
+
         let mut workspaces = self.workspaces.write().await;
         if workspaces.remove(&id).is_some() {
             Ok(())
         } else {
-            Err(MemoryError::WorkspaceError(format!("Workspace not found: {}", id)))
+            Err(MemoryError::WorkspaceError(format!(
+                "Workspace not found: {}",
+                id
+            )))
         }
     }
 
     async fn list(&self) -> Result<Vec<Workspace>, MemoryError> {
         debug!("Listing all workspaces");
-        
+
         let workspaces = self.workspaces.read().await;
         Ok(workspaces.values().cloned().collect())
     }
 
     async fn stats(&self, id: WorkspaceId) -> Result<MemoryStats, MemoryError> {
         debug!("Getting stats for workspace: {}", id);
-        
+
         let workspaces = self.workspaces.read().await;
         if !workspaces.contains_key(&id) {
-            return Err(MemoryError::WorkspaceError(format!("Workspace not found: {}", id)));
+            return Err(MemoryError::WorkspaceError(format!(
+                "Workspace not found: {}",
+                id
+            )));
         }
         drop(workspaces);
 
         let memories = self.memories.read().await;
-        let workspace_memories: Vec<_> = memories
-            .values()
-            .filter(|m| m.workspace_id == id)
-            .collect();
+        let workspace_memories: Vec<_> =
+            memories.values().filter(|m| m.workspace_id == id).collect();
 
-        let mut stats = MemoryStats::default();
-        stats.total_memories = workspace_memories.len() as u64;
+        let mut stats = MemoryStats {
+            total_memories: workspace_memories.len() as u64,
+            active_count: 0,
+            cooling_count: 0,
+            cold_count: 0,
+            zombie_count: 0,
+            total_size_bytes: 0,
+            average_importance: 0.0,
+        };
 
         for m in &workspace_memories {
             match m.status {
@@ -456,14 +508,18 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use memory_core::{MemoryContent, MemoryMetadata, MemorySource, MemoryStatus, SearchQuery, Workspace};
+    use memory_core::{
+        MemoryContent, MemoryMetadata, MemorySource, MemoryStatus, SearchQuery, Workspace,
+    };
     use uuid::Uuid;
 
     // Helper function to create a test memory entry
     fn create_test_memory(workspace_id: WorkspaceId, importance: f32) -> MemoryEntry {
         let content = MemoryContent::Text("Test memory content".to_string());
-        let metadata = MemoryMetadata::new(MemorySource::UserQuery { query: "test".to_string() })
-            .with_importance(importance);
+        let metadata = MemoryMetadata::new(MemorySource::UserQuery {
+            query: "test".to_string(),
+        })
+        .with_importance(importance);
         MemoryEntry::new(workspace_id, content, metadata)
     }
 
@@ -692,7 +748,9 @@ mod tests {
         // Add some memories
         for i in 0..3 {
             let content = MemoryContent::Text(format!("Memory {}", i));
-            let metadata = MemoryMetadata::new(MemorySource::UserQuery { query: "test".to_string() });
+            let metadata = MemoryMetadata::new(MemorySource::UserQuery {
+                query: "test".to_string(),
+            });
             let memory = MemoryEntry::new(workspace_id, content, metadata);
             MemoryApi::add(&client, memory).await.unwrap();
         }
@@ -711,7 +769,9 @@ mod tests {
 
         // Add memories to workspace1
         let content = MemoryContent::Text("Test".to_string());
-        let metadata = MemoryMetadata::new(MemorySource::UserQuery { query: "test".to_string() });
+        let metadata = MemoryMetadata::new(MemorySource::UserQuery {
+            query: "test".to_string(),
+        });
         let memory1 = MemoryEntry::new(workspace_id1, content.clone(), metadata.clone());
         MemoryApi::add(&client, memory1).await.unwrap();
 
@@ -749,7 +809,9 @@ mod tests {
         let mut memories: Vec<MemoryEntry> = Vec::new();
         for i in 0..5 {
             let content = MemoryContent::Text(format!("Memory {}", i));
-            let metadata = MemoryMetadata::new(MemorySource::UserQuery { query: "test".to_string() });
+            let metadata = MemoryMetadata::new(MemorySource::UserQuery {
+                query: "test".to_string(),
+            });
             let memory = MemoryEntry::new(workspace_id, content, metadata);
             memories.push(memory);
         }
@@ -786,7 +848,9 @@ mod tests {
         let mut ids: Vec<MemoryId> = Vec::new();
         for _ in 0..5 {
             let content = MemoryContent::Text("Test".to_string());
-            let metadata = MemoryMetadata::new(MemorySource::UserQuery { query: "test".to_string() });
+            let metadata = MemoryMetadata::new(MemorySource::UserQuery {
+                query: "test".to_string(),
+            });
             let memory = MemoryEntry::new(workspace_id, content, metadata);
             let id = memory.id;
             MemoryApi::add(&client, memory).await.unwrap();
@@ -807,7 +871,9 @@ mod tests {
 
         // Add one memory
         let content = MemoryContent::Text("Test".to_string());
-        let metadata = MemoryMetadata::new(MemorySource::UserQuery { query: "test".to_string() });
+        let metadata = MemoryMetadata::new(MemorySource::UserQuery {
+            query: "test".to_string(),
+        });
         let memory = MemoryEntry::new(workspace_id, content, metadata);
         let existing_id = memory.id;
         MemoryApi::add(&client, memory).await.unwrap();
@@ -858,8 +924,10 @@ mod tests {
         // Add memories with different importance
         for i in 0..3 {
             let content = MemoryContent::Text(format!("Searchable memory {}", i));
-            let metadata = MemoryMetadata::new(MemorySource::UserQuery { query: "test".to_string() })
-                .with_importance(0.5 + i as f32 * 0.2);
+            let metadata = MemoryMetadata::new(MemorySource::UserQuery {
+                query: "test".to_string(),
+            })
+            .with_importance(0.5 + i as f32 * 0.2);
             let memory = MemoryEntry::new(workspace_id, content, metadata);
             MemoryApi::add(&client, memory).await.unwrap();
         }
@@ -890,7 +958,9 @@ mod tests {
 
         // Add memory with embedding
         let content = MemoryContent::Text("Test content".to_string());
-        let metadata = MemoryMetadata::new(MemorySource::UserQuery { query: "test".to_string() });
+        let metadata = MemoryMetadata::new(MemorySource::UserQuery {
+            query: "test".to_string(),
+        });
         let mut memory = MemoryEntry::new(workspace_id, content, metadata);
         memory.embedding = Some(vec![1.0; 128]);
         MemoryApi::add(&client, memory).await.unwrap();
@@ -908,7 +978,9 @@ mod tests {
 
         // Add memory without embedding
         let content = MemoryContent::Text("Test content".to_string());
-        let metadata = MemoryMetadata::new(MemorySource::UserQuery { query: "test".to_string() });
+        let metadata = MemoryMetadata::new(MemorySource::UserQuery {
+            query: "test".to_string(),
+        });
         let memory = MemoryEntry::new(workspace_id, content, metadata);
         MemoryApi::add(&client, memory).await.unwrap();
 
@@ -926,7 +998,8 @@ mod tests {
         let workspace_id = Uuid::new_v4();
         let embedding = vec![0.1; 128];
 
-        let result = SearchApi::hybrid_search(&client, workspace_id, "nonexistent", &embedding, 10).await;
+        let result =
+            SearchApi::hybrid_search(&client, workspace_id, "nonexistent", &embedding, 10).await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
     }
@@ -938,13 +1011,16 @@ mod tests {
 
         // Add memory with embedding and text content
         let content = MemoryContent::Text("hybrid search test".to_string());
-        let metadata = MemoryMetadata::new(MemorySource::UserQuery { query: "test".to_string() });
+        let metadata = MemoryMetadata::new(MemorySource::UserQuery {
+            query: "test".to_string(),
+        });
         let mut memory = MemoryEntry::new(workspace_id, content, metadata);
         memory.embedding = Some(vec![1.0; 128]);
         MemoryApi::add(&client, memory).await.unwrap();
 
         let embedding = vec![1.0; 128];
-        let result = SearchApi::hybrid_search(&client, workspace_id, "hybrid", &embedding, 10).await;
+        let result =
+            SearchApi::hybrid_search(&client, workspace_id, "hybrid", &embedding, 10).await;
         assert!(result.is_ok());
         assert!(!result.unwrap().is_empty());
     }
@@ -1058,7 +1134,9 @@ mod tests {
 
         // Add memories to workspace
         let content = MemoryContent::Text("Test".to_string());
-        let metadata = MemoryMetadata::new(MemorySource::UserQuery { query: "test".to_string() });
+        let metadata = MemoryMetadata::new(MemorySource::UserQuery {
+            query: "test".to_string(),
+        });
         let memory = MemoryEntry::new(workspace_id, content, metadata);
         MemoryApi::add(&client, memory).await.unwrap();
 
@@ -1131,8 +1209,10 @@ mod tests {
 
         for (i, status) in statuses.iter().enumerate() {
             let content = MemoryContent::Text(format!("Memory {}", i));
-            let metadata = MemoryMetadata::new(MemorySource::UserQuery { query: "test".to_string() })
-                .with_importance(0.5);
+            let metadata = MemoryMetadata::new(MemorySource::UserQuery {
+                query: "test".to_string(),
+            })
+            .with_importance(0.5);
             let mut memory = MemoryEntry::new(workspace_id, content, metadata);
             memory.status = *status;
             MemoryApi::add(&client, memory).await.unwrap();

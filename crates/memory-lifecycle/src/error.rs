@@ -1,7 +1,7 @@
 //! Lifecycle-specific error types
 
-use thiserror::Error;
 use memory_core::MemoryError;
+use thiserror::Error;
 
 /// Lifecycle-specific errors
 #[derive(Error, Debug)]
@@ -28,11 +28,19 @@ pub enum LifecycleError {
 impl From<LifecycleError> for MemoryError {
     fn from(err: LifecycleError) -> Self {
         match err {
-            LifecycleError::TransitionError(msg) => MemoryError::InvalidOperation(format!("Transition: {}", msg)),
-            LifecycleError::PolicyError(msg) => MemoryError::InvalidOperation(format!("Policy: {}", msg)),
-            LifecycleError::SchedulerError(msg) => MemoryError::InvalidOperation(format!("Scheduler: {}", msg)),
+            LifecycleError::TransitionError(msg) => {
+                MemoryError::InvalidOperation(format!("Transition: {}", msg))
+            }
+            LifecycleError::PolicyError(msg) => {
+                MemoryError::InvalidOperation(format!("Policy: {}", msg))
+            }
+            LifecycleError::SchedulerError(msg) => {
+                MemoryError::InvalidOperation(format!("Scheduler: {}", msg))
+            }
             LifecycleError::StorageError(msg) => MemoryError::StorageError(msg),
-            LifecycleError::InvalidTransition(from, to) => MemoryError::InvalidOperation(format!("Invalid transition: {} -> {}", from, to)),
+            LifecycleError::InvalidTransition(from, to) => {
+                MemoryError::InvalidOperation(format!("Invalid transition: {} -> {}", from, to))
+            }
             LifecycleError::NotFound(id) => MemoryError::NotFound(id),
         }
     }

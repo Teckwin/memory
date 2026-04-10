@@ -3,13 +3,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
 use tokio::sync::RwLock;
 use tokio::time::interval;
 
-use memory_core::{
-    BatchResult, LifecycleApi,
-};
+use memory_core::{BatchResult, LifecycleApi};
 
 use crate::error::LifecycleError;
 use crate::policy::TransitionPolicy;
@@ -23,6 +20,7 @@ pub enum SchedulerState {
 }
 
 /// Lifecycle scheduler that runs periodic transition checks
+#[allow(dead_code)]
 pub struct LifecycleScheduler {
     storage: Arc<dyn LifecycleApi>,
     policy: Arc<dyn TransitionPolicy>,
@@ -32,10 +30,7 @@ pub struct LifecycleScheduler {
 }
 
 impl LifecycleScheduler {
-    pub fn new(
-        storage: Arc<dyn LifecycleApi>,
-        policy: Arc<dyn TransitionPolicy>,
-    ) -> Self {
+    pub fn new(storage: Arc<dyn LifecycleApi>, policy: Arc<dyn TransitionPolicy>) -> Self {
         Self {
             storage,
             policy,
@@ -63,7 +58,9 @@ impl LifecycleScheduler {
     pub async fn start(&self) -> Result<(), LifecycleError> {
         let mut state = self.state.write().await;
         if *state == SchedulerState::Running {
-            return Err(LifecycleError::SchedulerError("Scheduler already running".to_string()));
+            return Err(LifecycleError::SchedulerError(
+                "Scheduler already running".to_string(),
+            ));
         }
         *state = SchedulerState::Running;
         drop(state);
@@ -91,7 +88,10 @@ impl LifecycleScheduler {
             tracing::info!("Lifecycle scheduler stopped");
         });
 
-        tracing::info!("Lifecycle scheduler started with interval {:?}", self.check_interval);
+        tracing::info!(
+            "Lifecycle scheduler started with interval {:?}",
+            self.check_interval
+        );
         Ok(())
     }
 
@@ -99,7 +99,9 @@ impl LifecycleScheduler {
     pub async fn stop(&self) -> Result<(), LifecycleError> {
         let mut state = self.state.write().await;
         if *state == SchedulerState::Stopped {
-            return Err(LifecycleError::SchedulerError("Scheduler not running".to_string()));
+            return Err(LifecycleError::SchedulerError(
+                "Scheduler not running".to_string(),
+            ));
         }
         *state = SchedulerState::Stopped;
         Ok(())
@@ -109,7 +111,9 @@ impl LifecycleScheduler {
     pub async fn pause(&self) -> Result<(), LifecycleError> {
         let mut state = self.state.write().await;
         if *state != SchedulerState::Running {
-            return Err(LifecycleError::SchedulerError("Scheduler not running".to_string()));
+            return Err(LifecycleError::SchedulerError(
+                "Scheduler not running".to_string(),
+            ));
         }
         *state = SchedulerState::Paused;
         Ok(())
@@ -119,20 +123,22 @@ impl LifecycleScheduler {
     pub async fn resume(&self) -> Result<(), LifecycleError> {
         let mut state = self.state.write().await;
         if *state != SchedulerState::Paused {
-            return Err(LifecycleError::SchedulerError("Scheduler not paused".to_string()));
+            return Err(LifecycleError::SchedulerError(
+                "Scheduler not paused".to_string(),
+            ));
         }
         *state = SchedulerState::Running;
         Ok(())
     }
 
     /// Run a single transition cycle
-    async fn run_cycle(
-        storage: &Arc<dyn LifecycleApi>,
-    ) -> Result<BatchResult, LifecycleError> {
+    async fn run_cycle(storage: &Arc<dyn LifecycleApi>) -> Result<BatchResult, LifecycleError> {
         tracing::debug!("Running lifecycle transition cycle");
 
         // Run transitions through the storage
-        let result = storage.run_transitions().await
+        let result = storage
+            .run_transitions()
+            .await
             .map_err(|e| LifecycleError::TransitionError(e.to_string()))?;
 
         tracing::info!(
@@ -147,7 +153,9 @@ impl LifecycleScheduler {
     /// Manually trigger a transition cycle
     pub async fn trigger_cycle(&self) -> Result<BatchResult, LifecycleError> {
         if *self.state.read().await == SchedulerState::Stopped {
-            return Err(LifecycleError::SchedulerError("Scheduler not running".to_string()));
+            return Err(LifecycleError::SchedulerError(
+                "Scheduler not running".to_string(),
+            ));
         }
 
         Self::run_cycle(&self.storage).await
@@ -157,8 +165,9 @@ impl LifecycleScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use memory_core::{MemoryError, MemoryId, MemoryStatus, WorkspaceId};
     use std::sync::Mutex;
-    use memory_core::{MemoryId, MemoryStatus, WorkspaceId, MemoryError};
 
     struct MockLifecycleStorage {
         transitions: Mutex<Vec<(MemoryId, MemoryStatus)>>,
@@ -176,12 +185,19 @@ mod tests {
 
     #[async_trait]
     impl LifecycleApi for MockLifecycleStorage {
-        async fn transition(&self, id: MemoryId, new_status: MemoryStatus) -> Result<(), MemoryError> {
+        async fn transition(
+            &self,
+            id: MemoryId,
+            new_status: MemoryStatus,
+        ) -> Result<(), MemoryError> {
             self.transitions.lock().unwrap().push((id, new_status));
             Ok(())
         }
 
-        async fn get_transition_candidates(&self, _status: MemoryStatus) -> Result<Vec<MemoryId>, MemoryError> {
+        async fn get_transition_candidates(
+            &self,
+            _status: MemoryStatus,
+        ) -> Result<Vec<MemoryId>, MemoryError> {
             Ok(self.candidates.lock().unwrap().clone())
         }
 
@@ -207,8 +223,8 @@ mod tests {
     async fn test_scheduler_start_stop() {
         let storage = Arc::new(MockLifecycleStorage::new());
         let policy = Arc::new(crate::policy::DefaultTransitionPolicy::new());
-        let scheduler = LifecycleScheduler::new(storage, policy)
-            .with_interval(Duration::from_secs(1));
+        let scheduler =
+            LifecycleScheduler::new(storage, policy).with_interval(Duration::from_secs(1));
 
         scheduler.start().await.unwrap();
         assert_eq!(scheduler.state().await, SchedulerState::Running);
@@ -221,8 +237,8 @@ mod tests {
     async fn test_scheduler_pause_resume() {
         let storage = Arc::new(MockLifecycleStorage::new());
         let policy = Arc::new(crate::policy::DefaultTransitionPolicy::new());
-        let scheduler = LifecycleScheduler::new(storage, policy)
-            .with_interval(Duration::from_secs(1));
+        let scheduler =
+            LifecycleScheduler::new(storage, policy).with_interval(Duration::from_secs(1));
 
         scheduler.start().await.unwrap();
         scheduler.pause().await.unwrap();
@@ -238,8 +254,8 @@ mod tests {
     async fn test_scheduler_cannot_start_twice() {
         let storage = Arc::new(MockLifecycleStorage::new());
         let policy = Arc::new(crate::policy::DefaultTransitionPolicy::new());
-        let scheduler = LifecycleScheduler::new(storage, policy)
-            .with_interval(Duration::from_secs(1));
+        let scheduler =
+            LifecycleScheduler::new(storage, policy).with_interval(Duration::from_secs(1));
 
         scheduler.start().await.unwrap();
         let result = scheduler.start().await;

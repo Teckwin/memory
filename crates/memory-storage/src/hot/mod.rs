@@ -1,12 +1,12 @@
 //! Hot storage - in-memory cache for Active memories
 
+use async_trait::async_trait;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
-use async_trait::async_trait;
 
-use memory_core::{MemoryId, MemoryEntry, MemoryStatus, WorkspaceId,
-    SearchQuery, SearchResult, BatchResult,
-    MemoryApi, MemoryError,
+use memory_core::{
+    BatchResult, MemoryApi, MemoryEntry, MemoryError, MemoryId, MemoryStatus, SearchQuery,
+    SearchResult, WorkspaceId,
 };
 
 /// Hot storage implementation using HashMap + RwLock
@@ -126,11 +126,14 @@ impl MemoryApi for HotStorage {
         }
 
         let mut cache = self.cache.write().await;
-        if cache.contains_key(&memory.id) {
-            cache.insert(memory.id, memory);
-            Ok(())
-        } else {
-            Err(MemoryError::NotFound(memory.id.to_string()))
+        match cache.entry(memory.id) {
+            std::collections::hash_map::Entry::Occupied(mut e) => {
+                e.insert(memory);
+                Ok(())
+            }
+            std::collections::hash_map::Entry::Vacant(_) => {
+                Err(MemoryError::NotFound(memory.id.to_string()))
+            }
         }
     }
 
@@ -148,7 +151,7 @@ impl MemoryApi for HotStorage {
         query: SearchQuery,
     ) -> Result<Vec<SearchResult>, MemoryError> {
         let cache = self.cache.read().await;
-        
+
         let mut results: Vec<SearchResult> = cache
             .values()
             .filter(|m| m.workspace_id == workspace_id)
@@ -195,43 +198,39 @@ impl MemoryApi for HotStorage {
         } else {
             vec![]
         };
-        
+
         Ok(results)
     }
 
     async fn batch_add(&self, memories: Vec<MemoryEntry>) -> Result<BatchResult, MemoryError> {
         let mut result = BatchResult::new();
-        
-        
+
         for memory in memories {
             if memory.status != MemoryStatus::Active {
-                result.add_failure(format!(
-                    "Memory {} is not Active",
-                    memory.id
-                ));
+                result.add_failure(format!("Memory {} is not Active", memory.id));
                 continue;
             }
-            
+
             self.evict_if_needed().await;
-            
+
             let id = memory.id;
             let mut cache = self.cache.write().await;
             let is_new = cache.insert(id, memory).is_none();
             drop(cache);
-            
+
             if is_new {
                 result.add_success();
             } else {
                 result.add_failure(format!("Failed to add memory {}", id));
             }
         }
-        
+
         Ok(result)
     }
 
     async fn batch_delete(&self, ids: Vec<MemoryId>) -> Result<BatchResult, MemoryError> {
         let mut result = BatchResult::new();
-        
+
         for id in ids {
             if self.cache.write().await.remove(&id).is_some() {
                 result.add_success();
@@ -239,7 +238,7 @@ impl MemoryApi for HotStorage {
                 result.add_failure(format!("Memory {} not found", id));
             }
         }
-        
+
         Ok(result)
     }
 }
@@ -253,9 +252,10 @@ mod tests {
         let mut entry = MemoryEntry::new(
             uuid::Uuid::new_v4(),
             MemoryContent::Text("test content".to_string()),
-            MemoryMetadata::new(memory_core::MemorySource::UserQuery { 
-                query: "test".to_string() 
-            }).with_tags(vec!["test".to_string()]),
+            MemoryMetadata::new(memory_core::MemorySource::UserQuery {
+                query: "test".to_string(),
+            })
+            .with_tags(vec!["test".to_string()]),
         );
         entry.status = status;
         entry
@@ -266,7 +266,7 @@ mod tests {
         let storage = HotStorage::new(100);
         let memory = create_test_memory(MemoryStatus::Active);
         let id = memory.id;
-        
+
         let result = storage.add(memory).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), id);
@@ -276,7 +276,7 @@ mod tests {
     async fn test_add_non_active_memory_fails() {
         let storage = HotStorage::new(100);
         let memory = create_test_memory(MemoryStatus::Cold);
-        
+
         let result = storage.add(memory).await;
         assert!(result.is_err());
     }
@@ -286,10 +286,10 @@ mod tests {
         let storage = HotStorage::new(100);
         let memory = create_test_memory(MemoryStatus::Active);
         let id = memory.id;
-        
+
         storage.add(memory).await.unwrap();
         let retrieved = storage.get(id).await;
-        
+
         assert!(retrieved.is_ok());
         assert_eq!(retrieved.unwrap().id, id);
     }
@@ -298,7 +298,7 @@ mod tests {
     async fn test_get_nonexistent_memory() {
         let storage = HotStorage::new(100);
         let id = uuid::Uuid::new_v4();
-        
+
         let result = storage.get(id).await;
         assert!(result.is_err());
     }
@@ -308,11 +308,11 @@ mod tests {
         let storage = HotStorage::new(100);
         let memory = create_test_memory(MemoryStatus::Active);
         let id = memory.id;
-        
+
         storage.add(memory).await.unwrap();
         let result = storage.delete(id).await;
         assert!(result.is_ok());
-        
+
         let get_result = storage.get(id).await;
         assert!(get_result.is_err());
     }
@@ -321,20 +321,20 @@ mod tests {
     async fn test_list_memories() {
         let storage = HotStorage::new(100);
         let workspace_id = uuid::Uuid::new_v4();
-        
+
         for i in 0..5 {
             let mut memory = create_test_memory(MemoryStatus::Active);
             memory.workspace_id = workspace_id;
             memory.content = MemoryContent::Text(format!("test content {}", i));
             storage.add(memory).await.unwrap();
         }
-        
+
         let query = SearchQuery {
             workspace_id: Some(workspace_id),
             limit: 10,
             ..Default::default()
         };
-        
+
         let results = storage.list(workspace_id, query).await.unwrap();
         assert_eq!(results.len(), 5);
     }
@@ -342,18 +342,16 @@ mod tests {
     #[tokio::test]
     async fn test_batch_operations() {
         let storage = HotStorage::new(100);
-        
+
         let memories: Vec<MemoryEntry> = (0..10)
             .map(|_| create_test_memory(MemoryStatus::Active))
             .collect();
-        
+
         let add_result = storage.batch_add(memories).await.unwrap();
         assert_eq!(add_result.success_count, 10);
-        
-        let ids: Vec<MemoryId> = (0..5)
-            .map(|_| uuid::Uuid::new_v4())
-            .collect();
-        
+
+        let ids: Vec<MemoryId> = (0..5).map(|_| uuid::Uuid::new_v4()).collect();
+
         let delete_result = storage.batch_delete(ids).await.unwrap();
         assert_eq!(delete_result.success_count, 0); // None exist
     }
@@ -361,12 +359,12 @@ mod tests {
     #[tokio::test]
     async fn test_eviction() {
         let storage = HotStorage::new(3);
-        
+
         for _i in 0..5 {
             let memory = create_test_memory(MemoryStatus::Active);
             storage.add(memory).await.unwrap();
         }
-        
+
         assert_eq!(storage.len().await, 3);
     }
 }

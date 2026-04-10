@@ -64,17 +64,17 @@ impl FulltextIndex {
     /// Create a new FulltextIndex with the given configuration
     pub fn new(config: FulltextConfig) -> Result<Self, IndexError> {
         info!("Creating new FulltextIndex");
-        
+
         // Build schema
         let mut schema_builder = Schema::builder();
-        
+
         let field_id = schema_builder.add_text_field("id", STRING | STORED);
         let field_workspace_id = schema_builder.add_text_field("workspace_id", STRING | STORED);
         let field_content = schema_builder.add_text_field("content", TEXT | STORED);
         let field_tags = schema_builder.add_text_field("tags", TEXT | STORED);
         let field_importance = schema_builder.add_f64_field("importance", STORED);
         let field_status = schema_builder.add_text_field("status", STRING | STORED);
-        
+
         let schema = schema_builder.build();
 
         Ok(Self {
@@ -140,13 +140,11 @@ impl FulltextIndex {
             MemoryContent::File(file) => {
                 format!("{} {}", file.path.display(), file.content)
             }
-            MemoryContent::Composite(contents) => {
-                contents
-                    .iter()
-                    .map(Self::extract_text)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            }
+            MemoryContent::Composite(contents) => contents
+                .iter()
+                .map(Self::extract_text)
+                .collect::<Vec<_>>()
+                .join(" "),
         }
     }
 
@@ -160,7 +158,7 @@ impl FulltextIndex {
 
         // Extract searchable text
         let content = Self::extract_text(&memory.content);
-        
+
         // Get tags as string
         let tags = memory
             .metadata
@@ -184,9 +182,10 @@ impl FulltextIndex {
         );
 
         // Spawn blocking for tantivy operations
-        let mut writer = self.writer.take().ok_or_else(|| {
-            IndexError::OperationFailed("Index writer not available".to_string())
-        })?;
+        let mut writer = self
+            .writer
+            .take()
+            .ok_or_else(|| IndexError::OperationFailed("Index writer not available".to_string()))?;
 
         let result = task::spawn_blocking(move || {
             // Delete by term
@@ -215,12 +214,13 @@ impl FulltextIndex {
 
     /// Add multiple memory entries in batch
     pub async fn batch_add(&mut self, memories: &[MemoryEntry]) -> Result<(), IndexError> {
-        let mut writer = self.writer.take().ok_or_else(|| {
-            IndexError::OperationFailed("Index writer not available".to_string())
-        })?;
+        let mut writer = self
+            .writer
+            .take()
+            .ok_or_else(|| IndexError::OperationFailed("Index writer not available".to_string()))?;
 
         let mut doc_ids: Vec<u64> = Vec::new();
-        
+
         for memory in memories {
             // Skip already indexed
             if self.memory_to_doc.contains_key(&memory.id) {
@@ -278,14 +278,12 @@ impl FulltextIndex {
 
     /// Remove a memory from the index
     pub async fn remove(&mut self, memory_id: MemoryId) -> Result<(), IndexError> {
-        let _doc_id = self
-            .memory_to_doc
-            .remove(&memory_id)
-            .map(|_| ());
+        let _doc_id = self.memory_to_doc.remove(&memory_id).map(|_| ());
 
-        let mut writer = self.writer.take().ok_or_else(|| {
-            IndexError::OperationFailed("Index writer not available".to_string())
-        })?;
+        let mut writer = self
+            .writer
+            .take()
+            .ok_or_else(|| IndexError::OperationFailed("Index writer not available".to_string()))?;
 
         let field_id = self.field_id;
         let memory_id_str = memory_id.to_string();
@@ -316,17 +314,18 @@ impl FulltextIndex {
         tags: Option<Vec<String>>,
         limit: usize,
     ) -> Result<Vec<MemoryId>, IndexError> {
-        let reader = self.reader.as_ref().ok_or_else(|| {
-            IndexError::OperationFailed("Index reader not available".to_string())
-        })?;
+        let reader = self
+            .reader
+            .as_ref()
+            .ok_or_else(|| IndexError::OperationFailed("Index reader not available".to_string()))?;
 
         let searcher = reader.searcher();
-        
+
         // Create query parser
         let query_parser = QueryParser::for_index(
-            self.index.as_ref().ok_or_else(|| {
-                IndexError::OperationFailed("Index not available".to_string())
-            })?,
+            self.index
+                .as_ref()
+                .ok_or_else(|| IndexError::OperationFailed("Index not available".to_string()))?,
             vec![self.field_content, self.field_tags],
         );
 
@@ -336,19 +335,21 @@ impl FulltextIndex {
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
 
         let mut results: Vec<MemoryId> = Vec::new();
-        
+
         for (_score, doc_address) in top_docs {
             let retrieved_doc: TantivyDocument = searcher.doc(doc_address)?;
-            
+
             let id_str = retrieved_doc
                 .get_first(self.field_id)
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| IndexError::OperationFailed("Missing id field".to_string()))?;
-            
+
             let ws_id_str = retrieved_doc
                 .get_first(self.field_workspace_id)
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| IndexError::OperationFailed("Missing workspace_id field".to_string()))?;
+                .ok_or_else(|| {
+                    IndexError::OperationFailed("Missing workspace_id field".to_string())
+                })?;
 
             let doc_ws_id: WorkspaceId = ws_id_str
                 .parse()
@@ -367,7 +368,7 @@ impl FulltextIndex {
                     .get_first(self.field_tags)
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                
+
                 let has_tag = filter_tags.iter().any(|tag| doc_tags_str.contains(tag));
                 if !has_tag {
                     continue;
@@ -445,14 +446,20 @@ mod tests {
     use memory_core::{MemoryContent, MemoryMetadata, MemoryStatus};
     use uuid::Uuid;
 
-    fn create_test_memory(workspace_id: WorkspaceId, content: &str, tags: Vec<&str>) -> MemoryEntry {
+    fn create_test_memory(
+        workspace_id: WorkspaceId,
+        content: &str,
+        tags: Vec<&str>,
+    ) -> MemoryEntry {
         MemoryEntry {
             id: Uuid::new_v4(),
             workspace_id,
             content: MemoryContent::Text(content.to_string()),
             embedding: None,
             metadata: MemoryMetadata {
-                source: memory_core::MemorySource::System { source_type: "test".to_string() },
+                source: memory_core::MemorySource::System {
+                    source_type: "test".to_string(),
+                },
                 custom_fields: std::collections::HashMap::new(),
                 tags: tags.into_iter().map(String::from).collect(),
                 importance: 0.5,
@@ -490,9 +497,17 @@ mod tests {
         index.initialize().unwrap();
 
         let workspace_id = Uuid::new_v4();
-        
-        let mem1 = create_test_memory(workspace_id, "Rust programming language", vec!["programming"]);
-        let mem2 = create_test_memory(workspace_id, "Python for data science", vec!["programming", "data"]);
+
+        let mem1 = create_test_memory(
+            workspace_id,
+            "Rust programming language",
+            vec!["programming"],
+        );
+        let mem2 = create_test_memory(
+            workspace_id,
+            "Python for data science",
+            vec!["programming", "data"],
+        );
         let mem3 = create_test_memory(workspace_id, "Cooking recipes", vec!["food"]);
 
         index.add(&mem1).await.unwrap();
@@ -500,7 +515,10 @@ mod tests {
         index.add(&mem3).await.unwrap();
 
         // Search for "programming"
-        let results = index.search("programming", Some(workspace_id), None, 10).await.unwrap();
+        let results = index
+            .search("programming", Some(workspace_id), None, 10)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 2);
     }
 
@@ -510,7 +528,7 @@ mod tests {
         index.initialize().unwrap();
 
         let workspace_id = Uuid::new_v4();
-        
+
         let mem1 = create_test_memory(workspace_id, "Content 1", vec!["tag1", "tag2"]);
         let mem2 = create_test_memory(workspace_id, "Content 2", vec!["tag2", "tag3"]);
         let mem3 = create_test_memory(workspace_id, "Content 3", vec!["tag3"]);
@@ -520,13 +538,11 @@ mod tests {
         index.add(&mem3).await.unwrap();
 
         // Search with tag filter
-        let results = index.search(
-            "*", 
-            Some(workspace_id), 
-            Some(vec!["tag2".to_string()]), 
-            10
-        ).await.unwrap();
-        
+        let results = index
+            .search("*", Some(workspace_id), Some(vec!["tag2".to_string()]), 10)
+            .await
+            .unwrap();
+
         assert_eq!(results.len(), 2);
     }
 

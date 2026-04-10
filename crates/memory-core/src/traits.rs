@@ -11,7 +11,11 @@ pub trait MemoryApi: Send + Sync {
     async fn get(&self, id: MemoryId) -> Result<MemoryEntry, MemoryError>;
     async fn update(&self, memory: MemoryEntry) -> Result<(), MemoryError>;
     async fn delete(&self, id: MemoryId) -> Result<(), MemoryError>;
-    async fn list(&self, workspace_id: WorkspaceId, query: SearchQuery) -> Result<Vec<SearchResult>, MemoryError>;
+    async fn list(
+        &self,
+        workspace_id: WorkspaceId,
+        query: SearchQuery,
+    ) -> Result<Vec<SearchResult>, MemoryError>;
     async fn batch_add(&self, memories: Vec<MemoryEntry>) -> Result<BatchResult, MemoryError>;
     async fn batch_delete(&self, ids: Vec<MemoryId>) -> Result<BatchResult, MemoryError>;
 }
@@ -19,8 +23,19 @@ pub trait MemoryApi: Send + Sync {
 #[async_trait]
 pub trait SearchApi: Send + Sync {
     async fn search(&self, query: SearchQuery) -> Result<Vec<SearchResult>, MemoryError>;
-    async fn vector_search(&self, workspace_id: WorkspaceId, embedding: &[f32], limit: usize) -> Result<Vec<SearchResult>, MemoryError>;
-    async fn hybrid_search(&self, workspace_id: WorkspaceId, text: &str, embedding: &[f32], limit: usize) -> Result<Vec<SearchResult>, MemoryError>;
+    async fn vector_search(
+        &self,
+        workspace_id: WorkspaceId,
+        embedding: &[f32],
+        limit: usize,
+    ) -> Result<Vec<SearchResult>, MemoryError>;
+    async fn hybrid_search(
+        &self,
+        workspace_id: WorkspaceId,
+        text: &str,
+        embedding: &[f32],
+        limit: usize,
+    ) -> Result<Vec<SearchResult>, MemoryError>;
 }
 
 #[async_trait]
@@ -36,15 +51,23 @@ pub trait WorkspaceApi: Send + Sync {
 #[async_trait]
 pub trait LifecycleApi: Send + Sync {
     async fn transition(&self, id: MemoryId, new_status: MemoryStatus) -> Result<(), MemoryError>;
-    async fn get_transition_candidates(&self, status: MemoryStatus) -> Result<Vec<MemoryId>, MemoryError>;
+    async fn get_transition_candidates(
+        &self,
+        status: MemoryStatus,
+    ) -> Result<Vec<MemoryId>, MemoryError>;
     async fn run_transitions(&self) -> Result<BatchResult, MemoryError>;
     async fn archive(&self, workspace_id: WorkspaceId) -> Result<BatchResult, MemoryError>;
 }
 
 #[async_trait]
 pub trait TrainApi: Send + Sync {
-    async fn prepare_data(&self, workspace_id: WorkspaceId, params: TrainParams) -> Result<TrainData, MemoryError>;
-    async fn train(&self, data: TrainData, params: TrainParams) -> Result<TrainResult, MemoryError>;
+    async fn prepare_data(
+        &self,
+        workspace_id: WorkspaceId,
+        params: TrainParams,
+    ) -> Result<TrainData, MemoryError>;
+    async fn train(&self, data: TrainData, params: TrainParams)
+        -> Result<TrainResult, MemoryError>;
     async fn list_models(&self) -> Result<Vec<TrainModel>, MemoryError>;
     async fn load_model(&self, model_id: Uuid) -> Result<LoadedModel, MemoryError>;
     async fn generate_embeddings(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, MemoryError>;
@@ -123,7 +146,7 @@ mod tests {
     #[test]
     fn test_train_params_default() {
         let params = TrainParams::default();
-        
+
         assert_eq!(params.model_type, ModelType::Embedding);
         assert_eq!(params.epochs, 10);
         assert_eq!(params.batch_size, 32);
@@ -140,7 +163,7 @@ mod tests {
             learning_rate: 0.0001,
             output_dir: std::path::PathBuf::from("custom_models"),
         };
-        
+
         assert_eq!(params.model_type, ModelType::Classifier);
         assert_eq!(params.epochs, 50);
         assert_eq!(params.batch_size, 64);
@@ -153,7 +176,7 @@ mod tests {
     #[test]
     fn test_train_metrics_default() {
         let metrics = TrainMetrics::default();
-        
+
         assert_eq!(metrics.loss, 0.0);
         assert!(metrics.accuracy.is_none());
         assert!(metrics.f1_score.is_none());
@@ -166,7 +189,7 @@ mod tests {
             accuracy: Some(0.92),
             f1_score: Some(0.90),
         };
-        
+
         assert_eq!(metrics.loss, 0.25);
         assert_eq!(metrics.accuracy, Some(0.92));
         assert_eq!(metrics.f1_score, Some(0.90));
@@ -179,11 +202,11 @@ mod tests {
         // Test Embedding variant
         let embedding = ModelType::Embedding;
         assert_eq!(format!("{:?}", embedding), "Embedding");
-        
+
         // Test Classifier variant
         let classifier = ModelType::Classifier;
         assert_eq!(format!("{:?}", classifier), "Classifier");
-        
+
         // Test Reranker variant
         let reranker = ModelType::Reranker;
         assert_eq!(format!("{:?}", reranker), "Reranker");
@@ -194,7 +217,7 @@ mod tests {
         let m1 = ModelType::Embedding;
         let m2 = ModelType::Embedding;
         let m3 = ModelType::Classifier;
-        
+
         assert_eq!(m1, m2);
         assert_ne!(m1, m3);
     }
@@ -203,7 +226,7 @@ mod tests {
     fn test_model_type_clone() {
         let original = ModelType::Reranker;
         let cloned = original.clone();
-        
+
         assert_eq!(original, cloned);
     }
 
@@ -212,7 +235,7 @@ mod tests {
         // ModelType is Copy because it's a simple enum with no heap data
         let original = ModelType::Embedding;
         let copied = original;
-        
+
         assert_eq!(original, copied);
     }
 }
