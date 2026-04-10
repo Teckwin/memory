@@ -351,7 +351,7 @@ mod tests {
         }
     }
 
-    fn create_test_memory(status: MemoryStatus) -> MemoryEntry {
+    fn create_test_memory(_status: MemoryStatus) -> MemoryEntry {
         let source = MemorySource::System {
             source_type: "test".to_string(),
         };
