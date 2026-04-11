@@ -460,14 +460,9 @@ impl WorkspaceApi for MemoryClient {
         let workspace_memories: Vec<_> =
             memories.values().filter(|m| m.workspace_id == id).collect();
 
-        let mut stats = MemoryStats {
+        let mut stats = memory_core::MemoryStats {
             total_memories: workspace_memories.len() as u64,
-            active_count: 0,
-            cooling_count: 0,
-            cold_count: 0,
-            zombie_count: 0,
-            total_size_bytes: 0,
-            average_importance: 0.0,
+            ..Default::default()
         };
 
         for m in &workspace_memories {
@@ -1290,5 +1285,721 @@ mod tests {
 
         let result = cosine_similarity(&a, &b);
         assert_eq!(result, 0.0);
+    }
+}
+
+// ==================== Stress Tests ====================
+
+#[cfg(test)]
+mod stress_tests {
+    use super::*;
+    use memory_core::{MemoryApi, MemoryStatus, SearchApi, SearchQuery, WorkspaceApi};
+    use std::sync::Arc;
+
+    // Helper function to create a test memory entry with custom content
+    fn create_test_memory_with_content(
+        workspace_id: WorkspaceId,
+        content: &str,
+        importance: f32,
+    ) -> MemoryEntry {
+        let content = memory_core::MemoryContent::Text(content.to_string());
+        let metadata = memory_core::MemoryMetadata::new(memory_core::MemorySource::UserQuery {
+            query: "test".to_string(),
+        })
+        .with_importance(importance);
+        MemoryEntry::new(workspace_id, content, metadata)
+    }
+
+    // Helper function to create a test workspace
+    fn create_test_workspace(name: &str) -> Workspace {
+        Workspace::new(name.to_string())
+    }
+
+    // Helper to extract text content from MemoryContent
+    fn extract_text(content: &memory_core::MemoryContent) -> String {
+        match content {
+            memory_core::MemoryContent::Text(s) => s.clone(),
+            _ => String::new(),
+        }
+    }
+
+    // ==================== Test 1: Large Batch Add ====================
+
+    /// Test adding 1000 memories in batch
+    #[tokio::test]
+    async fn test_large_batch_add() {
+        let client = Arc::new(MemoryClient::new());
+
+        // Create a workspace
+        let workspace = create_test_workspace("Large Batch Test");
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        assert!(result.is_ok());
+        let workspace_id = result.unwrap();
+
+        // Create 1000 memories
+        let mut memories = Vec::with_capacity(1000);
+        for i in 0..1000 {
+            let content = format!("Stress test memory {}", i);
+            let memory = create_test_memory_with_content(workspace_id, &content, 0.8);
+            memories.push(memory);
+        }
+
+        // Batch add all 1000 memories
+        let result = MemoryApi::batch_add(&*client, memories).await;
+        assert!(result.is_ok());
+
+        let batch_result = result.unwrap();
+        assert_eq!(batch_result.success_count, 1000);
+        assert_eq!(batch_result.failure_count, 0);
+
+        // Verify all memories were added
+        let count = client.memories.read().await.len();
+        assert_eq!(count, 1000);
+    }
+
+    // ==================== Test 2: Large Batch Mixed Operations ====================
+
+    /// Test adding 500, updating 300, deleting 200 (final count: 300)
+    #[tokio::test]
+    async fn test_large_batch_mixed() {
+        let client = Arc::new(MemoryClient::new());
+
+        // Create a workspace
+        let workspace = create_test_workspace("Mixed Operations Test");
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        assert!(result.is_ok());
+        let workspace_id = result.unwrap();
+
+        // Step 1: Add 500 memories
+        let mut memories = Vec::with_capacity(500);
+        let mut memory_ids = Vec::with_capacity(500);
+        for i in 0..500 {
+            let content = format!("Initial memory {}", i);
+            let memory = create_test_memory_with_content(workspace_id, &content, 0.8);
+            memory_ids.push(memory.id);
+            memories.push(memory);
+        }
+
+        let result = MemoryApi::batch_add(&*client, memories).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().success_count, 500);
+
+        // Step 2: Update first 300 memories
+        let mut update_count = 0;
+        for id in memory_ids.iter().take(300) {
+            let mut memory = MemoryApi::get(&*client, *id).await.unwrap();
+            // Modify content
+            let text = extract_text(&memory.content);
+            memory.content = memory_core::MemoryContent::Text(format!("{} - UPDATED", text));
+            let result = MemoryApi::update(&*client, memory).await;
+            assert!(result.is_ok());
+            update_count += 1;
+        }
+        assert_eq!(update_count, 300);
+
+        // Step 3: Delete last 200 memories
+        let delete_ids: Vec<_> = memory_ids
+            .iter()
+            .skip(300)
+            .take(200)
+            .map(|id| *id)
+            .collect();
+        let delete_result = MemoryApi::batch_delete(&*client, delete_ids).await;
+        assert!(delete_result.is_ok());
+        assert_eq!(delete_result.unwrap().success_count, 200);
+
+        // Verify final count: 500 - 200 = 300
+        let count = client.memories.read().await.len();
+        assert_eq!(count, 300);
+
+        // Verify first 300 still have "UPDATED" in content
+        for id in memory_ids.iter().take(300) {
+            let memory = MemoryApi::get(&*client, *id).await.unwrap();
+            let text = extract_text(&memory.content);
+            assert!(text.contains("UPDATED"));
+        }
+    }
+
+    // ==================== Test 3: Large Search with Pagination ====================
+
+    /// Test adding 500 memories and searching with pagination
+    #[tokio::test]
+    async fn test_large_search_results() {
+        let client = Arc::new(MemoryClient::new());
+
+        // Create a workspace
+        let workspace = create_test_workspace("Search Pagination Test");
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        assert!(result.is_ok());
+        let workspace_id = result.unwrap();
+
+        // Add 500 memories with searchable content
+        let mut memories = Vec::with_capacity(500);
+        for i in 0..500 {
+            // Mix of searchable and non-searchable content
+            let content = if i % 2 == 0 {
+                format!("Important memory {}", i)
+            } else {
+                format!("Regular entry {}", i)
+            };
+            let memory = create_test_memory_with_content(workspace_id, &content, 0.8);
+            memories.push(memory);
+        }
+
+        let result = MemoryApi::batch_add(&*client, memories).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().success_count, 500);
+
+        // Search with pagination - page 1
+        let search_query = SearchQuery {
+            text: Some("Important".to_string()),
+            workspace_id: Some(workspace_id),
+            tags: None,
+            status: None,
+            date_range: None,
+            limit: 50,
+            offset: 0,
+        };
+        let results = SearchApi::search(&*client, search_query).await;
+        assert!(results.is_ok());
+        let page1 = results.unwrap();
+        assert!(page1.len() <= 50); // At most 50 results due to pagination
+
+        // Search with pagination - page 2
+        let search_query = SearchQuery {
+            text: Some("Important".to_string()),
+            workspace_id: Some(workspace_id),
+            tags: None,
+            status: None,
+            date_range: None,
+            limit: 50,
+            offset: 50,
+        };
+        let results = SearchApi::search(&*client, search_query).await;
+        assert!(results.is_ok());
+        let page2 = results.unwrap();
+        assert!(page2.len() <= 50); // At most 50 results due to pagination
+
+        // Verify no overlap between pages
+        let page1_ids: std::collections::HashSet<_> = page1.iter().map(|r| r.memory.id).collect();
+        let page2_ids: std::collections::HashSet<_> = page2.iter().map(|r| r.memory.id).collect();
+        assert!(page1_ids.is_disjoint(&page2_ids));
+
+        // Get total count - should be ~250 (half of 500 have "Important")
+        let search_query = SearchQuery {
+            text: Some("Important".to_string()),
+            workspace_id: Some(workspace_id),
+            tags: None,
+            status: None,
+            date_range: None,
+            limit: 1000,
+            offset: 0,
+        };
+        let results = SearchApi::search(&*client, search_query).await;
+        assert!(results.is_ok());
+        assert!(results.unwrap().len() >= 200); // At least 200 "Important" memories
+    }
+
+    // ==================== Test 4: Memory Persistence Stress ====================
+
+    /// Test adding 200 memories and verifying get/list works correctly
+    #[tokio::test]
+    async fn test_memory_persistence_stress() {
+        let client = Arc::new(MemoryClient::new());
+
+        // Create a workspace
+        let workspace = create_test_workspace("Persistence Stress Test");
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        assert!(result.is_ok());
+        let workspace_id = result.unwrap();
+
+        // Add 200 memories
+        let mut memories = Vec::with_capacity(200);
+        let mut memory_ids = Vec::with_capacity(200);
+        for i in 0..200 {
+            let content = format!("Persistence test memory {}", i);
+            let memory = create_test_memory_with_content(workspace_id, &content, 0.8);
+            memory_ids.push(memory.id);
+            memories.push(memory);
+        }
+
+        let result = MemoryApi::batch_add(&*client, memories).await;
+        assert!(result.is_ok());
+
+        // Verify each memory can be retrieved individually
+        for id in &memory_ids {
+            let result = MemoryApi::get(&*client, *id).await;
+            assert!(result.is_ok(), "Failed to get memory {:?}", id);
+        }
+
+        // Verify list returns all 200 memories
+        let search_query = SearchQuery {
+            text: Some("Persistence test memory".to_string()),
+            workspace_id: Some(workspace_id),
+            tags: None,
+            status: None,
+            date_range: None,
+            limit: 300,
+            offset: 0,
+        };
+        let results = MemoryApi::list(&*client, workspace_id, search_query).await;
+        assert!(results.is_ok());
+        assert_eq!(results.unwrap().len(), 200);
+
+        // Verify stats
+        let stats = WorkspaceApi::stats(&*client, workspace_id).await.unwrap();
+        assert_eq!(stats.total_memories, 200);
+    }
+
+    // ==================== Test 5: Workspace with Large Dataset ====================
+
+    /// Test creating workspace, adding 500 memories, verifying stats are accurate
+    #[tokio::test]
+    async fn test_workspace_with_large_dataset() {
+        let client = Arc::new(MemoryClient::new());
+
+        // Create a workspace
+        let workspace = create_test_workspace("Large Dataset Test");
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        assert!(result.is_ok());
+        let workspace_id = result.unwrap();
+
+        // Add 500 memories with different statuses
+        let mut memories = Vec::with_capacity(500);
+
+        // 200 Active memories (importance >= 0.7)
+        for i in 0..200 {
+            let content = format!("Active memory {}", i);
+            let mut memory = create_test_memory_with_content(workspace_id, &content, 0.8);
+            memory.status = MemoryStatus::Active;
+            memories.push(memory);
+        }
+
+        // 150 Cooling memories (0.5 <= importance < 0.7)
+        for i in 0..150 {
+            let content = format!("Cooling memory {}", i);
+            let mut memory = create_test_memory_with_content(workspace_id, &content, 0.6);
+            memory.status = MemoryStatus::Cooling;
+            memories.push(memory);
+        }
+
+        // 150 Cold memories (importance < 0.5)
+        for i in 0..150 {
+            let content = format!("Cold memory {}", i);
+            let mut memory = create_test_memory_with_content(workspace_id, &content, 0.4);
+            memory.status = MemoryStatus::Cold;
+            memories.push(memory);
+        }
+
+        // Batch add all 500 memories
+        let result = MemoryApi::batch_add(&*client, memories).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().success_count, 500);
+
+        // Verify stats are accurate
+        let stats = WorkspaceApi::stats(&*client, workspace_id).await.unwrap();
+        assert_eq!(stats.total_memories, 500);
+        assert_eq!(stats.active_count, 200);
+        assert_eq!(stats.cooling_count, 150);
+        assert_eq!(stats.cold_count, 150);
+
+        // List workspaces and verify our workspace is there
+        let workspaces = WorkspaceApi::list(&*client).await.unwrap();
+        assert_eq!(workspaces.len(), 1);
+        assert_eq!(workspaces[0].id, workspace_id);
+
+        // Verify we can get the workspace
+        let workspace = WorkspaceApi::get(&*client, workspace_id).await.unwrap();
+        assert_eq!(workspace.name, "Large Dataset Test");
+    }
+}
+
+// ==================== Boundary Tests ====================
+
+#[cfg(test)]
+mod boundary_tests {
+    use super::*;
+    use memory_core::{MemoryContent, MemorySource};
+    use std::sync::Arc;
+
+    // Helper function to create a test memory with custom content
+    fn create_test_memory_with_content(
+        workspace_id: WorkspaceId,
+        content: &str,
+        importance: f32,
+    ) -> MemoryEntry {
+        let content = memory_core::MemoryContent::Text(content.to_string());
+        let metadata = memory_core::MemoryMetadata::new(MemorySource::UserQuery {
+            query: "test".to_string(),
+        })
+        .with_importance(importance);
+        MemoryEntry::new(workspace_id, content, metadata)
+    }
+
+    // Helper function to create a test workspace
+    fn create_test_workspace(name: &str) -> Workspace {
+        Workspace::new(name.to_string())
+    }
+
+    // ==================== Test 1: Empty Content ====================
+
+    /// Test adding memory with empty text content
+    #[tokio::test]
+    async fn test_empty_content() {
+        let client = Arc::new(MemoryClient::new());
+
+        // Create a workspace
+        let workspace = create_test_workspace("Empty Content Test");
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        assert!(result.is_ok());
+        let workspace_id = result.unwrap();
+
+        // Add memory with empty content
+        let memory = create_test_memory_with_content(workspace_id, "", 0.5);
+        let result = MemoryApi::add(&*client, memory).await;
+        assert!(result.is_ok());
+
+        // Verify we can retrieve it
+        let id = result.unwrap();
+        let retrieved = MemoryApi::get(&*client, id).await;
+        assert!(retrieved.is_ok());
+
+        // Verify content is empty
+        let mem = retrieved.unwrap();
+        match mem.content {
+            MemoryContent::Text(s) => assert_eq!(s, ""),
+            _ => panic!("Expected Text content"),
+        }
+    }
+
+    // ==================== Test 2: Unicode Content ====================
+
+    /// Test adding memory with Unicode/emoji content
+    #[tokio::test]
+    async fn test_unicode_content() {
+        let client = Arc::new(MemoryClient::new());
+
+        // Create a workspace
+        let workspace = create_test_workspace("Unicode Test");
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        assert!(result.is_ok());
+        let workspace_id = result.unwrap();
+
+        // Test various Unicode content
+        let test_cases = vec![
+            "你好世界🌍",
+            "Hello World 🌍",
+            "日本語テスト 🎌",
+            "Emoji test 😀😃😄😁😆",
+            "Mixed: 你好 Hello 👋",
+            "Special: ⭐️💯🔥✨",
+        ];
+
+        for content in test_cases {
+            let memory = create_test_memory_with_content(workspace_id, content, 0.8);
+            let result = MemoryApi::add(&*client, memory).await;
+            assert!(result.is_ok(), "Failed to add content: {}", content);
+
+            // Verify retrieval
+            let id = result.unwrap();
+            let retrieved = MemoryApi::get(&*client, id).await;
+            assert!(retrieved.is_ok());
+
+            let mem = retrieved.unwrap();
+            match mem.content {
+                MemoryContent::Text(s) => assert_eq!(s, content),
+                _ => panic!("Expected Text content"),
+            }
+        }
+    }
+
+    // ==================== Test 3: Special Characters ====================
+
+    /// Test adding memory with special characters (including SQL injection attempt, JSON)
+    #[tokio::test]
+    async fn test_special_characters() {
+        let client = Arc::new(MemoryClient::new());
+
+        // Create a workspace
+        let workspace = create_test_workspace("Special Chars Test");
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        assert!(result.is_ok());
+        let workspace_id = result.unwrap();
+
+        // Test various special characters
+        let test_cases = vec![
+            // SQL injection attempts (should be stored as-is, not executed)
+            "'; DROP TABLE memories; --",
+            "1' OR '1'='1",
+            "UNION SELECT * FROM users--",
+            // JSON-like content
+            r#"{"key": "value", "number": 42}"#,
+            r#"[1, 2, 3, "four"]"#,
+            // HTML content
+            "<script>alert('XSS')</script>",
+            "<div class=\"test\">Hello</div>",
+            // Shell commands
+            "ls -la /",
+            "rm -rf /",
+            // Various special characters
+            "!@#$%^&*()",
+            "Path: C:\\Users\\test\\file.txt",
+            "Newline\ntest\r\ncontent",
+            "Tab\ttest\tcontent",
+            "Backslash\\test",
+            "Quote\"test\"quotes",
+            "Mixed: 'single' \"double\" `backtick`",
+        ];
+
+        for content in test_cases {
+            let memory = create_test_memory_with_content(workspace_id, content, 0.5);
+            let result = MemoryApi::add(&*client, memory).await;
+            assert!(result.is_ok(), "Failed to add content: {}", content);
+
+            // Verify retrieval preserves content exactly
+            let id = result.unwrap();
+            let retrieved = MemoryApi::get(&*client, id).await;
+            assert!(retrieved.is_ok());
+
+            let mem = retrieved.unwrap();
+            match mem.content {
+                MemoryContent::Text(s) => {
+                    assert_eq!(s, content, "Content mismatch for: {}", content)
+                }
+                _ => panic!("Expected Text content"),
+            }
+        }
+    }
+
+    // ==================== Test 4: Very Long Content ====================
+
+    /// Test adding memory with very long text (10KB+)
+    #[tokio::test]
+    async fn test_very_long_content() {
+        let client = Arc::new(MemoryClient::new());
+
+        // Create a workspace
+        let workspace = create_test_workspace("Long Content Test");
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        assert!(result.is_ok());
+        let workspace_id = result.unwrap();
+
+        // Test different sizes
+        let sizes = vec![
+            1024,    // 1KB
+            10240,   // 10KB
+            102400,  // 100KB
+            1048576, // 1MB
+        ];
+
+        for size in sizes {
+            // Create content of exact size
+            let content: String = "A".repeat(size);
+            let memory = create_test_memory_with_content(workspace_id, &content, 0.5);
+            let result = MemoryApi::add(&*client, memory).await;
+            assert!(result.is_ok(), "Failed to add {} byte content", size);
+
+            // Verify retrieval and size
+            let id = result.unwrap();
+            let retrieved = MemoryApi::get(&*client, id).await;
+            assert!(retrieved.is_ok());
+
+            let mem = retrieved.unwrap();
+            match mem.content {
+                MemoryContent::Text(s) => {
+                    assert_eq!(s.len(), size, "Size mismatch for {} bytes", size)
+                }
+                _ => panic!("Expected Text content"),
+            }
+        }
+
+        // Test with repetitive pattern (compression-friendly content)
+        let repetitive_content = "The quick brown fox jumps over the lazy dog. ".repeat(1000); // ~34KB
+        let memory = create_test_memory_with_content(workspace_id, &repetitive_content, 0.5);
+        let result = MemoryApi::add(&*client, memory).await;
+        assert!(result.is_ok());
+
+        let id = result.unwrap();
+        let retrieved = MemoryApi::get(&*client, id).await;
+        assert!(retrieved.is_ok());
+
+        let mem = retrieved.unwrap();
+        match mem.content {
+            MemoryContent::Text(s) => assert_eq!(s.len(), repetitive_content.len()),
+            _ => panic!("Expected Text content"),
+        }
+    }
+
+    // ==================== Test 5: Workspace Name Boundaries ====================
+
+    /// Test workspace names at boundaries: empty and very long
+    #[tokio::test]
+    async fn test_workspace_name_boundaries() {
+        let client = Arc::new(MemoryClient::new());
+
+        // Test 1: Empty workspace name
+        let workspace = Workspace::new(String::new());
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        // Depending on validation rules, this may or may not be allowed
+        // We'll check what happens
+        if result.is_ok() {
+            let workspace_id = result.unwrap();
+            // If created, verify we can still use it
+            let retrieved = WorkspaceApi::get(&*client, workspace_id).await;
+            assert!(retrieved.is_ok());
+        }
+
+        // Test 2: Very long workspace name (1KB)
+        let long_name = "A".repeat(1024);
+        let workspace = Workspace::new(long_name.clone());
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        assert!(result.is_ok(), "Failed to create workspace with 1KB name");
+
+        let workspace_id = result.unwrap();
+        let retrieved = WorkspaceApi::get(&*client, workspace_id).await;
+        assert!(retrieved.is_ok());
+        assert_eq!(retrieved.unwrap().name, long_name);
+
+        // Test 3: Unicode workspace name
+        let unicode_name = "工作区测试 🌍";
+        let workspace = Workspace::new(unicode_name.to_string());
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        assert!(result.is_ok());
+
+        let workspace_id = result.unwrap();
+        let retrieved = WorkspaceApi::get(&*client, workspace_id).await;
+        assert!(retrieved.is_ok());
+        assert_eq!(retrieved.unwrap().name, unicode_name);
+
+        // Test 4: Special characters in workspace name
+        let special_name = "workspace-1.0 (test)";
+        let workspace = Workspace::new(special_name.to_string());
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        assert!(result.is_ok());
+
+        let workspace_id = result.unwrap();
+        let retrieved = WorkspaceApi::get(&*client, workspace_id).await;
+        assert!(retrieved.is_ok());
+        assert_eq!(retrieved.unwrap().name, special_name);
+    }
+
+    // ==================== Test 6: Zero Limit Search ====================
+
+    /// Test search with limit=0
+    #[tokio::test]
+    async fn test_zero_limit_search() {
+        let client = Arc::new(MemoryClient::new());
+
+        // Create a workspace and add some memories
+        let workspace = create_test_workspace("Zero Limit Test");
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        assert!(result.is_ok());
+        let workspace_id = result.unwrap();
+
+        // Add some memories
+        for i in 0..5 {
+            let content = format!("Test memory {}", i);
+            let memory = create_test_memory_with_content(workspace_id, &content, 0.8);
+            let result = MemoryApi::add(&*client, memory).await;
+            assert!(result.is_ok());
+        }
+
+        // Search with limit=0
+        let search_query = SearchQuery {
+            text: Some("Test memory".to_string()),
+            workspace_id: Some(workspace_id),
+            tags: None,
+            status: None,
+            date_range: None,
+            limit: 0,
+            offset: 0,
+        };
+
+        let results = MemoryApi::list(&*client, workspace_id, search_query).await;
+        // Depending on implementation, limit=0 might return empty or all results
+        assert!(results.is_ok());
+        let results = results.unwrap();
+        // Most implementations treat limit=0 as "no limit" or "return empty"
+        // We'll verify the behavior is consistent
+        assert!(
+            results.len() <= 5,
+            "Should not return more than available memories"
+        );
+    }
+
+    // ==================== Test 7: Large Offset Pagination ====================
+
+    /// Test search with large offset for pagination
+    #[tokio::test]
+    async fn test_large_offset_pagination() {
+        let client = Arc::new(MemoryClient::new());
+
+        // Create a workspace and add many memories
+        let workspace = create_test_workspace("Large Offset Test");
+        let result = WorkspaceApi::create(&*client, workspace).await;
+        assert!(result.is_ok());
+        let workspace_id = result.unwrap();
+
+        // Add 100 memories
+        let mut memory_ids = Vec::new();
+        for i in 0..100 {
+            let content = format!("Pagination memory {}", i);
+            let memory = create_test_memory_with_content(workspace_id, &content, 0.8);
+            let result = MemoryApi::add(&*client, memory).await;
+            assert!(result.is_ok());
+            memory_ids.push(result.unwrap());
+        }
+
+        // Test various offset values
+        let test_offsets = vec![0, 1, 10, 50, 99, 100, 1000];
+
+        for offset in test_offsets {
+            let search_query = SearchQuery {
+                text: Some("Pagination memory".to_string()),
+                workspace_id: Some(workspace_id),
+                tags: None,
+                status: None,
+                date_range: None,
+                limit: 10,
+                offset,
+            };
+
+            let results = MemoryApi::list(&*client, workspace_id, search_query).await;
+            assert!(results.is_ok());
+
+            let results = results.unwrap();
+            // With offset beyond available, should return empty
+            // With valid offset, should return up to limit results
+            if offset < 100 {
+                assert!(
+                    results.len() <= 10,
+                    "Offset {} should return at most 10 results",
+                    offset
+                );
+            } else {
+                // Offset >= 100 should return empty
+                assert!(results.is_empty(), "Offset {} should return empty", offset);
+            }
+        }
+
+        // Test with limit larger than available after offset
+        let search_query = SearchQuery {
+            text: Some("Pagination memory".to_string()),
+            workspace_id: Some(workspace_id),
+            tags: None,
+            status: None,
+            date_range: None,
+            limit: 1000, // Large limit
+            offset: 50,  // Start from middle
+        };
+
+        let results = MemoryApi::list(&*client, workspace_id, search_query).await;
+        assert!(results.is_ok());
+        let results = results.unwrap();
+        // Should return at most 50 results (100 - 50)
+        assert!(
+            results.len() <= 50,
+            "Should return at most 50 results when offset=50"
+        );
     }
 }
