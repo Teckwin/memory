@@ -1,7 +1,7 @@
 //! Storage-specific error types
 
-use thiserror::Error;
 use memory_core::MemoryError;
+use thiserror::Error;
 
 /// Storage layer errors
 #[derive(Error, Debug)]

@@ -27,10 +27,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use memory_core::{
-    BatchResult, MemoryError, MemoryId, MemoryStatus, SearchQuery, WorkspaceId,
-    LifecycleApi as CoreLifecycleApi, MemoryApi, SearchApi
+    BatchResult, LifecycleApi as CoreLifecycleApi, MemoryApi, MemoryError, MemoryId, MemoryStatus,
+    SearchApi, SearchQuery, WorkspaceId,
 };
-
 
 /// Lifecycle manager that implements the LifecycleApi trait
 pub struct LifecycleManager {
@@ -53,10 +52,7 @@ impl LifecycleManager {
     }
 
     /// Create a new LifecycleManager with the default policy
-    pub fn with_default_policy(
-        storage: Arc<dyn MemoryApi>,
-        search: Arc<dyn SearchApi>,
-    ) -> Self {
+    pub fn with_default_policy(storage: Arc<dyn MemoryApi>, search: Arc<dyn SearchApi>) -> Self {
         Self {
             storage,
             search,
@@ -209,7 +205,10 @@ impl CoreLifecycleApi for LifecycleManager {
         let mut batch_result = BatchResult::new();
 
         for result in results {
-            match self.transition(result.memory.id, MemoryStatus::Zombie).await {
+            match self
+                .transition(result.memory.id, MemoryStatus::Zombie)
+                .await
+            {
                 Ok(()) => batch_result.add_success(),
                 Err(e) => batch_result.add_failure(format!("{}: {}", result.memory.id, e)),
             }
@@ -222,9 +221,10 @@ impl CoreLifecycleApi for LifecycleManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use memory_core::{MemoryContent, MemoryEntry, MemoryMetadata, MemorySource};
     use std::sync::Mutex;
     use uuid::Uuid;
-    use memory_core::{MemoryEntry, MemoryContent, MemoryMetadata, MemorySource};
 
     struct MockMemoryStorage {
         memories: Mutex<Vec<MemoryEntry>>,
@@ -248,7 +248,8 @@ mod tests {
 
         async fn get(&self, id: MemoryId) -> Result<MemoryEntry, MemoryError> {
             let memories = self.memories.lock().unwrap();
-            memories.iter()
+            memories
+                .iter()
                 .find(|m| m.id == id)
                 .cloned()
                 .ok_or_else(|| MemoryError::NotFound(id.to_string()))
@@ -268,7 +269,11 @@ mod tests {
             Ok(())
         }
 
-        async fn list(&self, _workspace_id: WorkspaceId, _query: SearchQuery) -> Result<Vec<memory_core::SearchResult>, MemoryError> {
+        async fn list(
+            &self,
+            _workspace_id: WorkspaceId,
+            _query: SearchQuery,
+        ) -> Result<Vec<memory_core::SearchResult>, MemoryError> {
             Ok(Vec::new())
         }
 
@@ -297,9 +302,13 @@ mod tests {
 
     #[async_trait]
     impl SearchApi for MockSearchApi {
-        async fn search(&self, query: SearchQuery) -> Result<Vec<memory_core::SearchResult>, MemoryError> {
+        async fn search(
+            &self,
+            query: SearchQuery,
+        ) -> Result<Vec<memory_core::SearchResult>, MemoryError> {
             let memories = self.storage.memories.lock().unwrap();
-            let filtered: Vec<_> = memories.iter()
+            let filtered: Vec<_> = memories
+                .iter()
                 .filter(|m| {
                     if let Some(ref status) = query.status {
                         if m.status != *status {
@@ -322,17 +331,30 @@ mod tests {
             Ok(filtered)
         }
 
-        async fn vector_search(&self, _workspace_id: WorkspaceId, _embedding: &[f32], _limit: usize) -> Result<Vec<memory_core::SearchResult>, MemoryError> {
+        async fn vector_search(
+            &self,
+            _workspace_id: WorkspaceId,
+            _embedding: &[f32],
+            _limit: usize,
+        ) -> Result<Vec<memory_core::SearchResult>, MemoryError> {
             Ok(Vec::new())
         }
 
-        async fn hybrid_search(&self, _workspace_id: WorkspaceId, _text: &str, _embedding: &[f32], _limit: usize) -> Result<Vec<memory_core::SearchResult>, MemoryError> {
+        async fn hybrid_search(
+            &self,
+            _workspace_id: WorkspaceId,
+            _text: &str,
+            _embedding: &[f32],
+            _limit: usize,
+        ) -> Result<Vec<memory_core::SearchResult>, MemoryError> {
             Ok(Vec::new())
         }
     }
 
-    fn create_test_memory(status: MemoryStatus) -> MemoryEntry {
-        let source = MemorySource::System { source_type: "test".to_string() };
+    fn create_test_memory(_status: MemoryStatus) -> MemoryEntry {
+        let source = MemorySource::System {
+            source_type: "test".to_string(),
+        };
         let metadata = MemoryMetadata::new(source);
         MemoryEntry::new(
             Uuid::new_v4(),
@@ -350,7 +372,8 @@ mod tests {
         });
         let policy = Arc::new(DefaultTransitionPolicy::new());
 
-        let manager = LifecycleManager::new(Arc::clone(&storage) as Arc<dyn MemoryApi>, search, policy);
+        let manager =
+            LifecycleManager::new(Arc::clone(&storage) as Arc<dyn MemoryApi>, search, policy);
 
         // Add a test memory
         let memory = create_test_memory(MemoryStatus::Active);
@@ -375,7 +398,8 @@ mod tests {
         });
         let policy = Arc::new(DefaultTransitionPolicy::new());
 
-        let manager = LifecycleManager::new(Arc::clone(&storage) as Arc<dyn MemoryApi>, search, policy);
+        let manager =
+            LifecycleManager::new(Arc::clone(&storage) as Arc<dyn MemoryApi>, search, policy);
 
         // Add a test memory as Active
         let memory = create_test_memory(MemoryStatus::Active);
@@ -396,7 +420,8 @@ mod tests {
         });
         let policy = Arc::new(DefaultTransitionPolicy::new());
 
-        let manager = LifecycleManager::new(Arc::clone(&storage) as Arc<dyn MemoryApi>, search, policy);
+        let manager =
+            LifecycleManager::new(Arc::clone(&storage) as Arc<dyn MemoryApi>, search, policy);
 
         // Add memory that should transition (inactive for >7 days)
         let mut memory = create_test_memory(MemoryStatus::Active);
@@ -406,7 +431,9 @@ mod tests {
         storage.add(memory).await.unwrap();
 
         // Get candidates
-        let candidates = manager.get_transition_candidates(MemoryStatus::Active).await;
+        let candidates = manager
+            .get_transition_candidates(MemoryStatus::Active)
+            .await;
         assert!(candidates.is_ok());
     }
 
@@ -419,7 +446,8 @@ mod tests {
         });
         let policy = Arc::new(DefaultTransitionPolicy::new());
 
-        let manager = LifecycleManager::new(Arc::clone(&storage) as Arc<dyn MemoryApi>, search, policy);
+        let manager =
+            LifecycleManager::new(Arc::clone(&storage) as Arc<dyn MemoryApi>, search, policy);
 
         let workspace_id = Uuid::new_v4();
 
@@ -437,10 +465,25 @@ mod tests {
 
     #[test]
     fn test_is_valid_transition() {
-        assert!(LifecycleManager::is_valid_transition(MemoryStatus::Active, MemoryStatus::Cooling));
-        assert!(LifecycleManager::is_valid_transition(MemoryStatus::Cooling, MemoryStatus::Cold));
-        assert!(LifecycleManager::is_valid_transition(MemoryStatus::Cold, MemoryStatus::Zombie));
-        assert!(!LifecycleManager::is_valid_transition(MemoryStatus::Active, MemoryStatus::Zombie));
-        assert!(!LifecycleManager::is_valid_transition(MemoryStatus::Zombie, MemoryStatus::Cold));
+        assert!(LifecycleManager::is_valid_transition(
+            MemoryStatus::Active,
+            MemoryStatus::Cooling
+        ));
+        assert!(LifecycleManager::is_valid_transition(
+            MemoryStatus::Cooling,
+            MemoryStatus::Cold
+        ));
+        assert!(LifecycleManager::is_valid_transition(
+            MemoryStatus::Cold,
+            MemoryStatus::Zombie
+        ));
+        assert!(!LifecycleManager::is_valid_transition(
+            MemoryStatus::Active,
+            MemoryStatus::Zombie
+        ));
+        assert!(!LifecycleManager::is_valid_transition(
+            MemoryStatus::Zombie,
+            MemoryStatus::Cold
+        ));
     }
 }

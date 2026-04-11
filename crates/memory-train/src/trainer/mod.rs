@@ -1,15 +1,16 @@
 //! Trainer - Simplified model training (stub implementation)
 
-use memory_core::{TrainData, TrainResult, TrainMetrics, TrainParams, ModelType};
 use crate::error::TrainError;
-use uuid::Uuid;
+use memory_core::{ModelType, TrainData, TrainMetrics, TrainParams, TrainResult};
 use std::path::PathBuf;
+use uuid::Uuid;
 
 /// Simplified trainer that provides a stub implementation
-/// 
+///
 /// Note: Due to candle-nn version conflicts, this is a simplified implementation
 /// that generates mock training results. In production, this would integrate
 /// with a proper ML framework like candle.
+#[allow(dead_code)]
 pub struct Trainer {
     // Configuration
     device: TrainingDevice,
@@ -36,7 +37,7 @@ impl Trainer {
     }
 
     /// Train a model with the given data and parameters
-    /// 
+    ///
     /// This is a simplified implementation that:
     /// 1. Validates input data
     /// 2. Simulates training with mock metrics
@@ -134,11 +135,11 @@ impl Trainer {
     ) -> Result<TrainMetrics, TrainError> {
         // Simulate training time based on epochs
         let training_iterations = params.epochs as usize;
-        
+
         // Simulate loss decreasing over epochs
         let initial_loss = 2.0;
         let final_loss = initial_loss / (1.0 + (training_iterations as f32) * 0.1);
-        
+
         // Generate mock accuracy (not meaningful for embedding models)
         let accuracy = match params.model_type {
             ModelType::Embedding => None,
@@ -170,7 +171,7 @@ impl Trainer {
             ModelType::Classifier => "classifier",
             ModelType::Reranker => "reranker",
         };
-        
+
         let model_info = serde_json::json!({
             "model_id": model_id.to_string(),
             "model_type": model_type_str,
@@ -183,7 +184,7 @@ impl Trainer {
         });
 
         std::fs::write(path, model_info.to_string())?;
-        
+
         Ok(())
     }
 }
@@ -232,7 +233,7 @@ mod tests {
 
         let result = trainer.train(data, params).await;
         assert!(result.is_ok());
-        
+
         let train_result = result.unwrap();
         assert!(train_result.metrics.loss > 0.0);
     }

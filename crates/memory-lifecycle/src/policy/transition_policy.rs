@@ -64,7 +64,8 @@ impl PolicyConfig {
     /// Check if memory has been accessed recently (within the window)
     pub fn has_recent_access(&self, memory: &MemoryEntry) -> bool {
         let threshold = self.access_count_threshold();
-        memory.last_accessed
+        memory
+            .last_accessed
             .map(|last_accessed| last_accessed > threshold)
             .unwrap_or(false)
     }
@@ -106,9 +107,10 @@ impl PolicyConfig {
             }
             MemoryStatus::Cold => {
                 // Cold -> Zombie: no access for cold_to_zombie_days AND low importance
-                if !self.has_recent_access(memory) && 
-                   self.has_been_in_status_long_enough(memory, self.cold_to_zombie_days) &&
-                   !self.has_sufficient_importance(memory) {
+                if !self.has_recent_access(memory)
+                    && self.has_been_in_status_long_enough(memory, self.cold_to_zombie_days)
+                    && !self.has_sufficient_importance(memory)
+                {
                     Some(MemoryStatus::Zombie)
                 } else {
                     None
@@ -130,9 +132,15 @@ impl PolicyConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{Duration, Utc};
     use uuid::Uuid;
 
-    fn create_test_memory(status: MemoryStatus, days_ago: i64, access_count: u64, importance: f32) -> MemoryEntry {
+    fn create_test_memory(
+        status: MemoryStatus,
+        days_ago: i64,
+        access_count: u64,
+        importance: f32,
+    ) -> MemoryEntry {
         let now = Utc::now();
         MemoryEntry {
             id: Uuid::new_v4(),
@@ -141,7 +149,9 @@ mod tests {
             embedding: None,
             metadata: memory_core::MemoryMetadata {
                 tags: vec![],
-                source: memory_core::MemorySource::System { source_type: "test".to_string() },
+                source: memory_core::MemorySource::System {
+                    source_type: "test".to_string(),
+                },
                 custom_fields: Default::default(),
                 importance,
             },
@@ -176,7 +186,7 @@ mod tests {
     fn test_should_not_transition_recently_accessed() {
         let config = PolicyConfig::default();
         let memory = create_test_memory(MemoryStatus::Active, 1, 1, 0.5);
-        
+
         assert!(!config.should_transition(&memory));
     }
 
@@ -184,7 +194,7 @@ mod tests {
     fn test_should_transition_inactive_memory() {
         let config = PolicyConfig::default();
         let memory = create_test_memory(MemoryStatus::Active, 10, 0, 0.5);
-        
+
         assert!(config.should_transition(&memory));
     }
 
@@ -192,7 +202,7 @@ mod tests {
     fn test_get_next_status_active_to_cooling() {
         let config = PolicyConfig::default();
         let memory = create_test_memory(MemoryStatus::Active, 10, 0, 0.5);
-        
+
         let next_status = config.get_next_status(&memory);
         assert_eq!(next_status, Some(MemoryStatus::Cooling));
     }
@@ -201,7 +211,7 @@ mod tests {
     fn test_get_next_status_cooling_to_cold() {
         let config = PolicyConfig::default();
         let memory = create_test_memory(MemoryStatus::Cooling, 20, 0, 0.5);
-        
+
         let next_status = config.get_next_status(&memory);
         assert_eq!(next_status, Some(MemoryStatus::Cold));
     }
@@ -210,7 +220,7 @@ mod tests {
     fn test_get_next_status_cold_to_zombie() {
         let config = PolicyConfig::default();
         let memory = create_test_memory(MemoryStatus::Cold, 40, 0, 0.05);
-        
+
         let next_status = config.get_next_status(&memory);
         assert_eq!(next_status, Some(MemoryStatus::Zombie));
     }
@@ -219,7 +229,7 @@ mod tests {
     fn test_important_memory_not_zombie() {
         let config = PolicyConfig::default();
         let memory = create_test_memory(MemoryStatus::Cold, 40, 0, 0.5);
-        
+
         let next_status = config.get_next_status(&memory);
         // Important memory should stay Cold even with no access
         assert_eq!(next_status, None);

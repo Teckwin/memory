@@ -1,7 +1,7 @@
 //! Memory API error types
 
-use thiserror::Error;
 use memory_core::MemoryError;
+use thiserror::Error;
 
 /// API-specific errors
 #[derive(Error, Debug)]
@@ -46,59 +46,62 @@ impl From<ApiError> for MemoryError {
 mod tests {
     use super::*;
     use memory_core::MemoryError;
-    
+
     // ==================== ApiError Display Tests ====================
-    
+
     #[test]
     fn test_api_error_client_not_initialized_display() {
         let err = ApiError::ClientNotInitialized("test error".to_string());
         assert_eq!(format!("{}", err), "Client not initialized: test error");
     }
-    
+
     #[test]
     fn test_api_error_config_error_display() {
         let err = ApiError::ConfigError("invalid config".to_string());
         assert_eq!(format!("{}", err), "Configuration error: invalid config");
     }
-    
+
     #[test]
     fn test_api_error_invalid_parameter_display() {
         let err = ApiError::InvalidParameter("invalid param".to_string());
         assert_eq!(format!("{}", err), "Invalid parameter: invalid param");
     }
-    
+
     #[test]
     fn test_api_error_connection_error_display() {
         let err = ApiError::ConnectionError("connection failed".to_string());
         assert_eq!(format!("{}", err), "Connection error: connection failed");
     }
-    
+
     #[test]
     fn test_api_error_timeout_display() {
         let err = ApiError::Timeout("operation timed out".to_string());
         assert_eq!(format!("{}", err), "Timeout: operation timed out");
     }
-    
+
     #[test]
     fn test_api_error_backend_error_display() {
         let err = ApiError::BackendError("backend failed".to_string());
         assert_eq!(format!("{}", err), "Backend error: backend failed");
     }
-    
+
     #[test]
     fn test_api_error_core_error_display() {
         let core_err = MemoryError::NotFound("memory not found".to_string());
         let err = ApiError::CoreError(core_err);
-        assert_eq!(format!("{}", err), "Core error: Memory not found: memory not found");
+        assert_eq!(
+            format!("{}", err),
+            "Core error: Memory not found: memory not found"
+        );
     }
-    
+
     // ==================== From<ApiError> for MemoryError Tests ====================
-    
+
     #[test]
     fn test_from_api_error_core_error() {
         let api_err = ApiError::CoreError(MemoryError::NotFound("test".to_string()));
         let memory_err: MemoryError = api_err.into();
-        
+
         match memory_err {
             MemoryError::NotFound(msg) => {
                 assert_eq!(msg, "test");
@@ -106,12 +109,12 @@ mod tests {
             _ => panic!("Expected NotFound"),
         }
     }
-    
+
     #[test]
     fn test_from_api_error_client_not_initialized() {
         let api_err = ApiError::ClientNotInitialized("not initialized".to_string());
         let memory_err: MemoryError = api_err.into();
-        
+
         match memory_err {
             MemoryError::InvalidOperation(msg) => {
                 assert_eq!(msg, "not initialized");
@@ -119,12 +122,12 @@ mod tests {
             _ => panic!("Expected InvalidOperation"),
         }
     }
-    
+
     #[test]
     fn test_from_api_error_config_error() {
         let api_err = ApiError::ConfigError("config error".to_string());
         let memory_err: MemoryError = api_err.into();
-        
+
         match memory_err {
             MemoryError::InvalidOperation(msg) => {
                 assert_eq!(msg, "config error");
@@ -132,12 +135,12 @@ mod tests {
             _ => panic!("Expected InvalidOperation"),
         }
     }
-    
+
     #[test]
     fn test_from_api_error_invalid_parameter() {
         let api_err = ApiError::InvalidParameter("invalid param".to_string());
         let memory_err: MemoryError = api_err.into();
-        
+
         match memory_err {
             MemoryError::InvalidOperation(msg) => {
                 assert_eq!(msg, "invalid param");
@@ -145,12 +148,12 @@ mod tests {
             _ => panic!("Expected InvalidOperation"),
         }
     }
-    
+
     #[test]
     fn test_from_api_error_connection_error() {
         let api_err = ApiError::ConnectionError("connection failed".to_string());
         let memory_err: MemoryError = api_err.into();
-        
+
         match memory_err {
             MemoryError::StorageError(msg) => {
                 assert_eq!(msg, "connection failed");
@@ -158,12 +161,12 @@ mod tests {
             _ => panic!("Expected StorageError"),
         }
     }
-    
+
     #[test]
     fn test_from_api_error_timeout() {
         let api_err = ApiError::Timeout("timeout".to_string());
         let memory_err: MemoryError = api_err.into();
-        
+
         match memory_err {
             MemoryError::StorageError(msg) => {
                 assert_eq!(msg, "timeout");
@@ -171,12 +174,12 @@ mod tests {
             _ => panic!("Expected StorageError"),
         }
     }
-    
+
     #[test]
     fn test_from_api_error_backend_error() {
         let api_err = ApiError::BackendError("backend failed".to_string());
         let memory_err: MemoryError = api_err.into();
-        
+
         match memory_err {
             MemoryError::StorageError(msg) => {
                 assert_eq!(msg, "backend failed");

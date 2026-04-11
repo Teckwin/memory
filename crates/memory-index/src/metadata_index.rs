@@ -47,6 +47,7 @@ pub struct MetadataIndex {
 
 /// In-memory metadata entry for quick filtering
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct MemoryMetadataEntry {
     memory_id: MemoryId,
     workspace_id: WorkspaceId,
@@ -89,7 +90,7 @@ impl MetadataIndex {
                 .entry(workspace_id)
                 .or_default()
                 .insert(tag.clone());
-            
+
             // Add to tag inverted index
             self.tag_index
                 .entry(tag.clone())
@@ -114,7 +115,7 @@ impl MetadataIndex {
             created_at: memory.created_at,
             updated_at: memory.updated_at,
         };
-        
+
         self.memory_metadata.insert(memory_id, entry);
         self.count += 1;
 
@@ -168,7 +169,11 @@ impl MetadataIndex {
     }
 
     /// Get memories by tags (OR logic - any matching tag)
-    pub async fn get_by_tags(&self, tags: &[String], workspace_id: Option<WorkspaceId>) -> Vec<MemoryId> {
+    pub async fn get_by_tags(
+        &self,
+        tags: &[String],
+        workspace_id: Option<WorkspaceId>,
+    ) -> Vec<MemoryId> {
         let mut result: HashSet<MemoryId> = HashSet::new();
 
         for tag in tags {
@@ -191,9 +196,13 @@ impl MetadataIndex {
     }
 
     /// Get memories by status
-    pub async fn get_by_status(&self, status: memory_core::MemoryStatus, workspace_id: Option<WorkspaceId>) -> Vec<MemoryId> {
+    pub async fn get_by_status(
+        &self,
+        status: memory_core::MemoryStatus,
+        workspace_id: Option<WorkspaceId>,
+    ) -> Vec<MemoryId> {
         let status_str = status.to_string();
-        
+
         let mut result = self
             .status_index
             .get(&status_str)
@@ -221,7 +230,7 @@ impl MetadataIndex {
     ) -> Vec<MemoryId> {
         let mut result = Vec::new();
 
-        for (_, entry) in &self.memory_metadata {
+        for entry in self.memory_metadata.values() {
             // Check workspace filter
             if let Some(ws_id) = workspace_id {
                 if entry.workspace_id != ws_id {
@@ -246,7 +255,7 @@ impl MetadataIndex {
     ) -> Vec<MemoryId> {
         let mut result = Vec::new();
 
-        for (_, entry) in &self.memory_metadata {
+        for entry in self.memory_metadata.values() {
             // Check workspace filter
             if let Some(ws_id) = workspace_id {
                 if entry.workspace_id != ws_id {
@@ -284,7 +293,7 @@ impl MetadataIndex {
                         .unwrap_or(false)
                 })
                 .count();
-            
+
             if count > 0 {
                 counts.insert(status.clone(), count);
             }
@@ -364,7 +373,9 @@ mod tests {
             content: MemoryContent::Text("Test content".to_string()),
             embedding: None,
             metadata: MemoryMetadata {
-                source: memory_core::MemorySource::System { source_type: "test".to_string() },
+                source: memory_core::MemorySource::System {
+                    source_type: "test".to_string(),
+                },
                 custom_fields: std::collections::HashMap::new(),
                 tags,
                 importance: 0.5,
@@ -380,7 +391,7 @@ mod tests {
     #[tokio::test]
     async fn test_metadata_index_add() {
         let mut index = MetadataIndex::new(MetadataConfig::default());
-        
+
         let workspace_id = Uuid::new_v4();
         let memory = create_test_memory(
             workspace_id,
@@ -395,7 +406,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_by_workspace() {
         let mut index = MetadataIndex::new(MetadataConfig::default());
-        
+
         let ws1 = Uuid::new_v4();
         let ws2 = Uuid::new_v4();
 
@@ -412,7 +423,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_by_tags() {
         let mut index = MetadataIndex::new(MetadataConfig::default());
-        
+
         let workspace_id = Uuid::new_v4();
 
         let mem1 = create_test_memory(
@@ -436,14 +447,16 @@ mod tests {
         index.add(&mem3).await.unwrap();
 
         // Search for "programming" tag
-        let results = index.get_by_tags(&["programming".to_string()], Some(workspace_id)).await;
+        let results = index
+            .get_by_tags(&["programming".to_string()], Some(workspace_id))
+            .await;
         assert_eq!(results.len(), 2);
     }
 
     #[tokio::test]
     async fn test_get_by_status() {
         let mut index = MetadataIndex::new(MetadataConfig::default());
-        
+
         let workspace_id = Uuid::new_v4();
 
         let mem1 = create_test_memory(workspace_id, vec![], MemoryStatus::Active);
@@ -454,17 +467,21 @@ mod tests {
         index.add(&mem2).await.unwrap();
         index.add(&mem3).await.unwrap();
 
-        let active_results = index.get_by_status(MemoryStatus::Active, Some(workspace_id)).await;
+        let active_results = index
+            .get_by_status(MemoryStatus::Active, Some(workspace_id))
+            .await;
         assert_eq!(active_results.len(), 1);
 
-        let cooling_results = index.get_by_status(MemoryStatus::Cooling, Some(workspace_id)).await;
+        let cooling_results = index
+            .get_by_status(MemoryStatus::Cooling, Some(workspace_id))
+            .await;
         assert_eq!(cooling_results.len(), 1);
     }
 
     #[tokio::test]
     async fn test_get_tags() {
         let mut index = MetadataIndex::new(MetadataConfig::default());
-        
+
         let workspace_id = Uuid::new_v4();
 
         let mem1 = create_test_memory(
@@ -488,9 +505,10 @@ mod tests {
     #[tokio::test]
     async fn test_remove_memory() {
         let mut index = MetadataIndex::new(MetadataConfig::default());
-        
+
         let workspace_id = Uuid::new_v4();
-        let memory = create_test_memory(workspace_id, vec!["tag1".to_string()], MemoryStatus::Active);
+        let memory =
+            create_test_memory(workspace_id, vec!["tag1".to_string()], MemoryStatus::Active);
         let memory_id = memory.id;
 
         index.add(&memory).await.unwrap();
@@ -503,7 +521,7 @@ mod tests {
     #[tokio::test]
     async fn test_batch_add() {
         let mut index = MetadataIndex::new(MetadataConfig::default());
-        
+
         let workspace_id = Uuid::new_v4();
         let memories: Vec<_> = (0..5)
             .map(|_| create_test_memory(workspace_id, vec![], MemoryStatus::Active))

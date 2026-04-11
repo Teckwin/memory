@@ -54,14 +54,14 @@ impl MetricPoint for EmbeddingVector {
         let dot: f32 = self.0.iter().zip(other.0.iter()).map(|(a, b)| a * b).sum();
         let mag1: f32 = self.0.iter().map(|x| x * x).sum::<f32>().sqrt();
         let mag2: f32 = other.0.iter().map(|x| x * x).sum::<f32>().sqrt();
-        
+
         if mag1 == 0.0 || mag2 == 0.0 {
             return u32::MAX;
         }
-        
+
         let similarity = dot / (mag1 * mag2);
         let distance = 1.0 - similarity;
-        
+
         // Convert to integer representation
         space::f32_metric(distance)
     }
@@ -95,7 +95,10 @@ pub struct VectorIndex {
 impl VectorIndex {
     /// Create a new VectorIndex with the given configuration
     pub fn new(config: HnswConfig) -> Self {
-        info!("Creating new VectorIndex with dimension: {}", config.dimension);
+        info!(
+            "Creating new VectorIndex with dimension: {}",
+            config.dimension
+        );
         Self {
             config,
             hnsw: None,
@@ -143,10 +146,10 @@ impl VectorIndex {
 
         let (hnsw, vector_id) = task::spawn_blocking(move || {
             let mut hnsw = hnsw_opt.expect("HNSW not initialized");
-            
+
             let emb = EmbeddingVector::new(embedding_vec);
             let id = hnsw.insert(emb, &mut hnsw::Searcher::new());
-            
+
             (hnsw, id as usize)
         })
         .await
@@ -201,9 +204,10 @@ impl VectorIndex {
             });
         }
 
-        let hnsw_ref = self.hnsw.as_ref().ok_or_else(|| {
-            IndexError::OperationFailed("HNSW index not initialized".to_string())
-        })?;
+        let hnsw_ref = self
+            .hnsw
+            .as_ref()
+            .ok_or_else(|| IndexError::OperationFailed("HNSW index not initialized".to_string()))?;
 
         let query_vec = query_vector.to_vec();
         let limit = limit.min(1000); // Cap at 1000 results
@@ -217,10 +221,11 @@ impl VectorIndex {
             let mut searcher = hnsw::Searcher::new();
             let query = EmbeddingVector::new(query_vec);
             let mut neighbors = [Neighbor::invalid(); 1000];
-            
+
             hnsw_clone.nearest(&query, limit, &mut searcher, &mut neighbors);
-            
-            neighbors.iter()
+
+            neighbors
+                .iter()
                 .take(limit)
                 .filter(|n| n.index != usize::MAX)
                 .map(|n| (n.index, n.distance))
@@ -324,14 +329,18 @@ mod tests {
     use uuid::Uuid;
 
     fn create_test_memory(workspace_id: WorkspaceId, dimension: usize) -> MemoryEntry {
-        let embedding: Vec<f32> = (0..dimension).map(|i| (i as f32) / dimension as f32).collect();
+        let embedding: Vec<f32> = (0..dimension)
+            .map(|i| (i as f32) / dimension as f32)
+            .collect();
         MemoryEntry {
             id: Uuid::new_v4(),
             workspace_id,
             content: MemoryContent::Text("Test memory content".to_string()),
             embedding: Some(embedding),
             metadata: MemoryMetadata {
-                source: memory_core::MemorySource::System { source_type: "test".to_string() },
+                source: memory_core::MemorySource::System {
+                    source_type: "test".to_string(),
+                },
                 custom_fields: std::collections::HashMap::new(),
                 tags: vec!["test".to_string()],
                 importance: 0.5,
@@ -397,7 +406,7 @@ mod tests {
         index.initialize().unwrap();
 
         let workspace_id = Uuid::new_v4();
-        
+
         // Add 3 memories with similar embeddings
         for i in 0..3 {
             let mut memory = create_test_memory(workspace_id, 128);
@@ -411,7 +420,7 @@ mod tests {
         // Search with a query vector similar to the indexed ones
         let query: Vec<f32> = vec![0.5; 128];
         let results = index.search(&query, Some(workspace_id), 10).await.unwrap();
-        
+
         assert!(!results.is_empty());
     }
 
