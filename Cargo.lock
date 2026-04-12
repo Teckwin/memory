@@ -639,12 +639,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "memory-api"
+name = "memos-api"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "memory-core",
+ "chrono",
+ "memos-core",
  "serde",
  "thiserror",
  "tokio",
@@ -653,7 +654,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "memory-core"
+name = "memos-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -668,18 +669,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "memory-index"
+name = "memos-index"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
  "hnsw",
- "memory-core",
- "memory-storage",
+ "memos-core",
+ "memos-storage",
  "serde",
  "serde_json",
  "space",
  "tantivy",
+ "tempfile",
  "thiserror",
  "tokio",
  "tracing",
@@ -687,14 +689,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "memory-lifecycle"
+name = "memos-lifecycle"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "memory-core",
- "memory-storage",
+ "memos-core",
+ "memos-storage",
  "serde",
  "tempfile",
  "thiserror",
@@ -704,13 +706,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "memory-storage"
+name = "memos-storage"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "memory-core",
+ "memos-core",
  "rusqlite",
  "serde",
  "serde_json",
@@ -723,15 +725,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "memory-train"
+name = "memos-train"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "memory-core",
- "memory-index",
- "memory-storage",
+ "memos-core",
+ "memos-index",
+ "memos-storage",
  "serde",
  "serde_json",
  "tempfile",

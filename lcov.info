@@ -25,74 +25,74 @@ FN:440,<impl WorkspaceApi for MemoryClient>::list
 FN:447,<impl WorkspaceApi for MemoryClient>::stats
 FN:487,cosine_similarity
 FNF:24
-FNDA:51,<impl Default for ClientConfig>::default
-FNDA:50,MemoryClient::new
-FNDA:60,MemoryClient::with_config
+FNDA:68,<impl Default for ClientConfig>::default
+FNDA:67,MemoryClient::new
+FNDA:77,MemoryClient::with_config
 FNDA:1,MemoryClient::config
-FNDA:1345,MemoryClient::is_storage_enabled
-FNDA:16,MemoryClient::is_index_enabled
+FNDA:1757,MemoryClient::is_storage_enabled
+FNDA:29,MemoryClient::is_index_enabled
 FNDA:1,<impl Default for MemoryClient>::default
-FNDA:167,<impl MemoryApi for MemoryClient>::add
-FNDA:834,<impl MemoryApi for MemoryClient>::get
-FNDA:303,<impl MemoryApi for MemoryClient>::update
-FNDA:3,<impl MemoryApi for MemoryClient>::delete
-FNDA:2728,<impl MemoryApi for MemoryClient>::list
+FNDA:546,<impl MemoryApi for MemoryClient>::add
+FNDA:840,<impl MemoryApi for MemoryClient>::get
+FNDA:305,<impl MemoryApi for MemoryClient>::update
+FNDA:5,<impl MemoryApi for MemoryClient>::delete
+FNDA:3576,<impl MemoryApi for MemoryClient>::list
 FNDA:8,<impl MemoryApi for MemoryClient>::batch_add
-FNDA:4,<impl MemoryApi for MemoryClient>::batch_delete
-FNDA:7,<impl SearchApi for MemoryClient>::search
+FNDA:6,<impl MemoryApi for MemoryClient>::batch_delete
+FNDA:20,<impl SearchApi for MemoryClient>::search
 FNDA:6,<impl SearchApi for MemoryClient>::vector_search
 FNDA:2,<impl SearchApi for MemoryClient>::hybrid_search
-FNDA:27,<impl WorkspaceApi for MemoryClient>::create
+FNDA:62,<impl WorkspaceApi for MemoryClient>::create
 FNDA:10,<impl WorkspaceApi for MemoryClient>::get
 FNDA:2,<impl WorkspaceApi for MemoryClient>::update
-FNDA:3,<impl WorkspaceApi for MemoryClient>::delete
-FNDA:3,<impl WorkspaceApi for MemoryClient>::list
-FNDA:6,<impl WorkspaceApi for MemoryClient>::stats
+FNDA:5,<impl WorkspaceApi for MemoryClient>::delete
+FNDA:4,<impl WorkspaceApi for MemoryClient>::list
+FNDA:7,<impl WorkspaceApi for MemoryClient>::stats
 FNDA:8,cosine_similarity
-DA:20,51
-DA:40,50
-DA:41,100
-DA:45,60
-DA:46,60
-DA:49,240
-DA:50,120
+DA:20,68
+DA:40,67
+DA:41,134
+DA:45,77
+DA:46,77
+DA:49,308
+DA:50,154
 DA:55,1
 DA:56,1
-DA:60,1345
-DA:61,1345
-DA:65,16
-DA:66,16
+DA:60,1757
+DA:61,1757
+DA:65,29
+DA:66,29
 DA:71,1
 DA:72,1
-DA:78,167
-DA:95,834
-DA:108,4
-DA:111,303
-DA:132,3
-DA:166,2728
-DA:167,1363
-DA:168,1365
+DA:78,546
+DA:95,840
+DA:108,10
+DA:111,305
+DA:132,5
+DA:166,3576
+DA:167,1785
+DA:168,1787
 DA:169,2
-DA:171,1361
-DA:174,1362
-DA:175,1364
+DA:171,1783
+DA:174,1784
+DA:175,1786
 DA:176,10
-DA:178,1360
-DA:184,1802
-DA:186,901
-DA:192,892
-DA:193,892
-DA:194,892
-DA:195,892
-DA:196,3568
-DA:197,892
+DA:178,1782
+DA:184,2646
+DA:186,1323
+DA:192,1002
+DA:193,1002
+DA:194,1002
+DA:195,1002
+DA:196,4008
+DA:197,1002
 DA:204,8
-DA:227,4
-DA:253,7
-DA:273,298
-DA:274,298
-DA:275,596
-DA:276,596
+DA:227,6
+DA:253,20
+DA:273,320
+DA:274,320
+DA:275,640
+DA:276,640
 DA:301,6
 DA:302,3
 DA:303,11
@@ -114,15 +114,15 @@ DA:375,0
 DA:376,0
 DA:377,0
 DA:378,0
-DA:388,27
+DA:388,62
 DA:398,10
 DA:405,2
 DA:408,2
-DA:423,3
-DA:427,2
-DA:440,3
-DA:447,6
-DA:461,1414
+DA:423,5
+DA:427,16
+DA:440,4
+DA:447,7
+DA:461,1424
 DA:487,8
 DA:488,38
 DA:489,2
@@ -188,20 +188,20 @@ FNDA:3083,MemoryEntry::new
 FNDA:130,MemoryEntry::increment_access
 FNDA:5,MemoryContent::text
 FNDA:3,MemoryContent::code
-FNDA:918,MemoryContent::as_text
+FNDA:1028,MemoryContent::as_text
 FNDA:45,FileType::from_extension
-FNDA:3203,MemoryMetadata::new
-FNDA:2859,MemoryMetadata::with_importance
+FNDA:3582,MemoryMetadata::new
+FNDA:3238,MemoryMetadata::with_importance
 FNDA:290,MemoryMetadata::with_tags
 FNDA:1,MemoryMetadata::set_custom_field
 FNDA:70,<impl Display for MemoryStatus>::fmt
-FNDA:31,Workspace::new
+FNDA:66,Workspace::new
 FNDA:1,Workspace::with_description
-FNDA:32,<impl Default for WorkspaceConfig>::default
-FNDA:49,<impl Default for SearchQuery>::default
-FNDA:32,BatchResult::new
-FNDA:2957,BatchResult::add_success
-FNDA:23,BatchResult::add_failure
+FNDA:67,<impl Default for WorkspaceConfig>::default
+FNDA:69,<impl Default for SearchQuery>::default
+FNDA:34,BatchResult::new
+FNDA:3060,BatchResult::add_success
+FNDA:24,BatchResult::add_failure
 FNDA:1,<impl Default for BatchResult>::default
 DA:32,3083
 DA:37,6166
@@ -216,9 +216,9 @@ DA:74,3
 DA:75,9
 DA:76,6
 DA:77,3
-DA:81,918
-DA:82,918
-DA:83,1832
+DA:81,1028
+DA:82,1028
+DA:83,2052
 DA:84,2
 DA:116,45
 DA:117,45
@@ -230,12 +230,12 @@ DA:126,117
 DA:127,9
 DA:130,35
 DA:131,3
-DA:146,3203
-DA:149,3203
-DA:150,3203
-DA:155,2859
-DA:156,2859
-DA:157,2859
+DA:146,3582
+DA:149,3582
+DA:150,3582
+DA:155,3238
+DA:156,3238
+DA:157,3238
 DA:160,290
 DA:161,580
 DA:162,290
@@ -248,22 +248,22 @@ DA:194,128
 DA:195,6
 DA:196,4
 DA:197,2
-DA:214,31
-DA:215,62
-DA:217,62
-DA:222,31
+DA:214,66
+DA:215,132
+DA:217,132
+DA:222,66
 DA:226,1
 DA:227,2
 DA:228,1
-DA:242,32
-DA:273,49
-DA:302,32
-DA:306,32
-DA:310,2957
-DA:311,2957
-DA:314,23
-DA:315,23
-DA:316,69
+DA:242,67
+DA:273,69
+DA:302,34
+DA:306,34
+DA:310,3060
+DA:311,3060
+DA:314,24
+DA:315,24
+DA:316,72
 DA:321,1
 DA:322,1
 LF:63
@@ -1696,23 +1696,23 @@ LH:10
 end_of_record
 TN:
 SF:/Users/ryota/works/memory/crates/memory-storage/src/hot/mod.rs
-FN:22,HotStorage::new
-FN:29,HotStorage::with_capacity
-FN:37,HotStorage::contains
-FN:42,HotStorage::len
-FN:47,HotStorage::is_empty
-FN:52,HotStorage::ids
-FN:57,HotStorage::evict_if_needed
-FN:74,HotStorage::load_batch
-FN:84,HotStorage::remove
-FN:90,<impl Default for HotStorage>::default
-FN:97,<impl MemoryApi for HotStorage>::add
-FN:111,<impl MemoryApi for HotStorage>::get
-FN:122,<impl MemoryApi for HotStorage>::update
-FN:141,<impl MemoryApi for HotStorage>::delete
-FN:158,<impl MemoryApi for HotStorage>::list
-FN:206,<impl MemoryApi for HotStorage>::batch_add
-FN:232,<impl MemoryApi for HotStorage>::batch_delete
+FN:23,HotStorage::new
+FN:30,HotStorage::with_capacity
+FN:38,HotStorage::contains
+FN:43,HotStorage::len
+FN:48,HotStorage::is_empty
+FN:53,HotStorage::ids
+FN:58,HotStorage::evict_if_needed
+FN:75,HotStorage::load_batch
+FN:85,HotStorage::remove
+FN:91,<impl Default for HotStorage>::default
+FN:98,<impl MemoryApi for HotStorage>::add
+FN:112,<impl MemoryApi for HotStorage>::get
+FN:123,<impl MemoryApi for HotStorage>::update
+FN:142,<impl MemoryApi for HotStorage>::delete
+FN:159,<impl MemoryApi for HotStorage>::list
+FN:207,<impl MemoryApi for HotStorage>::batch_add
+FN:233,<impl MemoryApi for HotStorage>::batch_delete
 FNF:17
 FNDA:64,HotStorage::new
 FNDA:1,HotStorage::with_capacity
@@ -1731,58 +1731,58 @@ FNDA:1,<impl MemoryApi for HotStorage>::delete
 FNDA:108,<impl MemoryApi for HotStorage>::list
 FNDA:2,<impl MemoryApi for HotStorage>::batch_add
 FNDA:1,<impl MemoryApi for HotStorage>::batch_delete
-DA:22,64
-DA:24,128
-DA:29,1
-DA:31,3
-DA:37,54
-DA:38,135
-DA:42,10
-DA:43,20
-DA:47,2
-DA:48,4
-DA:52,2
-DA:53,6
-DA:57,388
-DA:58,582
-DA:59,196
-DA:61,4
-DA:63,20
-DA:65,6
-DA:66,4
-DA:68,0
-DA:74,2
-DA:75,3
-DA:76,6
-DA:77,10
-DA:78,15
-DA:84,18
-DA:85,45
-DA:90,0
+DA:23,64
+DA:25,128
+DA:30,1
+DA:32,3
+DA:38,54
+DA:39,135
+DA:43,10
+DA:44,20
+DA:48,2
+DA:49,4
+DA:53,2
+DA:54,6
+DA:58,388
+DA:59,582
+DA:60,196
+DA:62,4
+DA:64,20
+DA:66,6
+DA:67,4
+DA:69,0
+DA:75,2
+DA:76,3
+DA:77,6
+DA:78,10
+DA:79,15
+DA:85,18
+DA:86,45
 DA:91,0
-DA:97,184
-DA:111,130
-DA:122,0
-DA:141,1
-DA:158,108
-DA:159,32
-DA:161,54
-DA:162,22
-DA:164,10
-DA:167,32
-DA:169,35
-DA:170,15
-DA:172,29
-DA:175,31
-DA:177,35
-DA:178,20
-DA:179,12
-DA:181,27
-DA:185,58
-DA:187,29
-DA:192,87
-DA:206,2
-DA:232,1
+DA:92,0
+DA:98,184
+DA:112,130
+DA:123,0
+DA:142,1
+DA:159,108
+DA:160,32
+DA:162,54
+DA:163,22
+DA:165,10
+DA:168,32
+DA:170,35
+DA:171,15
+DA:173,29
+DA:176,31
+DA:178,35
+DA:179,20
+DA:180,12
+DA:182,27
+DA:186,58
+DA:188,29
+DA:193,78
+DA:207,2
+DA:233,1
 LF:52
 LH:48
 end_of_record
@@ -2086,16 +2086,16 @@ LH:40
 end_of_record
 TN:
 SF:/Users/ryota/works/memory/crates/memory-train/src/lib.rs
-FN:71,TrainService::new
-FN:90,TrainService::with_preparer
-FN:104,TrainService::generate_simple_embeddings
-FN:134,TrainService::simple_hash
-FN:160,<impl TrainApi for TrainService>::prepare_data
-FN:177,<impl TrainApi for TrainService>::train
-FN:181,<impl TrainApi for TrainService>::list_models
-FN:189,<impl TrainApi for TrainService>::load_model
-FN:197,<impl TrainApi for TrainService>::generate_embeddings
-FN:208,TrainService::fetch_memories_for_workspace
+FN:72,TrainService::new
+FN:91,TrainService::with_preparer
+FN:105,TrainService::generate_simple_embeddings
+FN:135,TrainService::simple_hash
+FN:161,<impl TrainApi for TrainService>::prepare_data
+FN:178,<impl TrainApi for TrainService>::train
+FN:182,<impl TrainApi for TrainService>::list_models
+FN:190,<impl TrainApi for TrainService>::load_model
+FN:198,<impl TrainApi for TrainService>::generate_embeddings
+FN:209,TrainService::fetch_memories_for_workspace
 FNF:10
 FNDA:13,TrainService::new
 FNDA:1,TrainService::with_preparer
@@ -2107,53 +2107,53 @@ FNDA:3,<impl TrainApi for TrainService>::list_models
 FNDA:3,<impl TrainApi for TrainService>::load_model
 FNDA:1,<impl TrainApi for TrainService>::generate_embeddings
 FNDA:1,TrainService::fetch_memories_for_workspace
-DA:71,13
-DA:75,39
-DA:76,26
-DA:78,13
+DA:72,13
+DA:76,39
+DA:77,26
 DA:79,13
-DA:81,13
-DA:82,26
+DA:80,13
+DA:82,13
 DA:83,26
-DA:84,13
+DA:84,26
 DA:85,13
-DA:90,1
-DA:95,4
-DA:96,1
+DA:86,13
+DA:91,1
+DA:96,4
 DA:97,1
-DA:104,2
-DA:108,2
-DA:110,7
-DA:113,20
-DA:116,5
-DA:117,645
-DA:120,1280
+DA:98,1
+DA:105,2
+DA:109,2
+DA:111,7
+DA:114,20
+DA:117,5
+DA:118,645
 DA:121,1280
-DA:122,640
-DA:123,302
-DA:125,338
-DA:128,5
-DA:134,8
-DA:135,24
-DA:136,252
-DA:137,380
-DA:138,76
-DA:141,8
-DA:142,0
-DA:144,8
-DA:160,0
-DA:165,2
-DA:177,4
-DA:181,3
-DA:185,0
-DA:189,3
-DA:193,4
-DA:197,1
-DA:208,1
-DA:216,2
-DA:227,2
-DA:229,1
-DA:231,1
+DA:122,1280
+DA:123,640
+DA:124,302
+DA:126,338
+DA:129,5
+DA:135,8
+DA:136,24
+DA:137,252
+DA:138,380
+DA:139,76
+DA:142,8
+DA:143,0
+DA:145,8
+DA:161,0
+DA:166,2
+DA:178,4
+DA:182,3
+DA:186,0
+DA:190,3
+DA:194,4
+DA:198,1
+DA:209,1
+DA:217,2
+DA:228,2
+DA:230,1
+DA:232,1
 LF:47
 LH:44
 end_of_record
