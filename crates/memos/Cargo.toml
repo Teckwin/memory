@@ -1,0 +1,36 @@
+[package]
+name = "memos"
+version = "0.1.0"
+edition = "2021"
+authors = ["Memos Team <team@memos.dev>"]
+description = "Memos - A comprehensive memory management system with tiered storage and multi-index search"
+documentation = "https://docs.rs/memos"
+repository = "https://github.com/Teckwin/memory"
+readme = "README.md"
+license = "MIT"
+keywords = ["memory", "storage", "vector-search", "fulltext-search", "embedding"]
+categories = ["database", "storage", "data-structures"]
+
+[dependencies]
+memos-core = { path = "../memos-core", version = "0.1.0" }
+memos-api = { path = "../memos-api", version = "0.1.0" }
+memos-storage = { path = "../memos-storage", version = "0.1.0" }
+memos-index = { path = "../memos-index", version = "0.1.0" }
+memos-lifecycle = { path = "../memos-lifecycle", version = "0.1.0" }
+memos-train = { path = "../memos-train", version = "0.1.0" }
+tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[[example]]
+name = "search_example"
+path = "examples/search_example.rs"
+
+[[example]]
+name = "lifecycle_example"
+path = "examples/lifecycle_example.rs"

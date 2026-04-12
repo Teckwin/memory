@@ -41,6 +41,11 @@ impl MemoryClient {
         Self::with_config(ClientConfig::default())
     }
 
+    /// Create a new in-memory MemoryClient (for testing/development)
+    pub async fn new_in_memory() -> Result<Self, MemoryError> {
+        Ok(Self::new())
+    }
+
     /// Create a new MemoryClient with custom configuration
     pub fn with_config(config: ClientConfig) -> Self {
         info!("Initializing MemoryClient with config: {:?}", config);
