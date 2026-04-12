@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-memos-core = { path = "../memos-core" }
+memos-core = { version = "0.1.0", path = "../memos-core" }
 tokio = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
