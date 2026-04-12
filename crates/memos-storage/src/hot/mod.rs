@@ -585,9 +585,10 @@ mod tests {
         // 模拟高并发读取 - 使用 Arc 来共享 storage
         let storage = Arc::new(storage);
         let mut handles = Vec::new();
+        let memory_id = id;
         for _ in 0..100 {
             let storage = Arc::clone(&storage);
-            let id = id;
+            let id = memory_id;
             handles.push(tokio::spawn(async move { storage.get(id).await }));
         }
 
