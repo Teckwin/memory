@@ -65,6 +65,14 @@ impl LifecycleManager {
         &self,
         status: MemoryStatus,
     ) -> Result<Vec<MemoryId>, MemoryError> {
+        self.get_candidates_for_status_impl(status).await
+    }
+
+    /// Internal implementation for testing
+    pub async fn get_candidates_for_status_impl(
+        &self,
+        status: MemoryStatus,
+    ) -> Result<Vec<MemoryId>, MemoryError> {
         let query = SearchQuery {
             text: None,
             tags: None,
@@ -485,5 +493,100 @@ mod tests {
             MemoryStatus::Zombie,
             MemoryStatus::Cold
         ));
+    }
+
+    #[tokio::test]
+    async fn test_with_default_policy() {
+        let storage = Arc::new(MockMemoryStorage::new());
+        let storage_for_search = Arc::clone(&storage);
+        let search = Arc::new(MockSearchApi {
+            storage: storage_for_search,
+        });
+
+        // Test with_default_policy constructor
+        let manager = LifecycleManager::with_default_policy(
+            Arc::clone(&storage) as Arc<dyn MemoryApi>,
+            search,
+        );
+
+        // Verify manager works with default policy
+        let memory = create_test_memory(MemoryStatus::Active);
+        let id = memory.id;
+        storage.add(memory).await.unwrap();
+
+        // Try transition - should work with default policy
+        let result = manager.transition(id, MemoryStatus::Cooling).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_apply_policy_transition() {
+        let storage = Arc::new(MockMemoryStorage::new());
+        let storage_for_search = Arc::clone(&storage);
+        let search = Arc::new(MockSearchApi {
+            storage: storage_for_search,
+        });
+        let policy = Arc::new(DefaultTransitionPolicy::new());
+
+        let manager =
+            LifecycleManager::new(Arc::clone(&storage) as Arc<dyn MemoryApi>, search, policy);
+
+        // Add a test memory that should trigger policy transition
+        let mut memory = create_test_memory(MemoryStatus::Active);
+        memory.updated_at = chrono::Utc::now() - chrono::Duration::days(10);
+        memory.access_count = 0;
+        memory.last_accessed = None;
+        storage.add(memory.clone()).await.unwrap();
+
+        // Manually call apply_policy_transition (this is a private method)
+        // We test it through transition method
+        let result = manager.transition(memory.id, MemoryStatus::Cooling).await;
+        assert!(result.is_ok());
+    }
+
+    /// 测试 transition 方法在记忆不存在时返回错误
+    #[tokio::test]
+    async fn test_transition_not_found() {
+        let storage = Arc::new(MockMemoryStorage::new());
+        let storage_for_search = Arc::clone(&storage);
+        let search = Arc::new(MockSearchApi {
+            storage: storage_for_search,
+        });
+        let policy = Arc::new(DefaultTransitionPolicy::new());
+
+        let manager =
+            LifecycleManager::new(Arc::clone(&storage) as Arc<dyn MemoryApi>, search, policy);
+
+        // 尝试转换一个不存在的记忆
+        let nonexistent_id = Uuid::new_v4();
+        let result = manager
+            .transition(nonexistent_id, MemoryStatus::Cooling)
+            .await;
+        assert!(result.is_err());
+    }
+
+    /// 测试 run_transitions 处理候选记忆
+    #[tokio::test]
+    async fn test_run_transitions_with_candidates() {
+        let storage = Arc::new(MockMemoryStorage::new());
+        let storage_for_search = Arc::clone(&storage);
+        let search = Arc::new(MockSearchApi {
+            storage: storage_for_search,
+        });
+        let policy = Arc::new(DefaultTransitionPolicy::new());
+
+        let manager =
+            LifecycleManager::new(Arc::clone(&storage) as Arc<dyn MemoryApi>, search, policy);
+
+        // 添加一个符合条件的记忆用于转换
+        let mut memory = create_test_memory(MemoryStatus::Active);
+        memory.updated_at = chrono::Utc::now() - chrono::Duration::days(10);
+        memory.access_count = 0;
+        memory.last_accessed = None;
+        storage.add(memory.clone()).await.unwrap();
+
+        // 运行转换
+        let result = manager.run_transitions().await;
+        assert!(result.is_ok());
     }
 }

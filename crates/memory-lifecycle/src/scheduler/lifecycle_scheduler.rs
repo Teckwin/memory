@@ -273,4 +273,32 @@ mod tests {
         let result = scheduler.stop().await;
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn test_trigger_cycle() {
+        let storage = Arc::new(MockLifecycleStorage::new());
+        let policy = Arc::new(crate::policy::DefaultTransitionPolicy::new());
+        let scheduler = LifecycleScheduler::new(storage, policy);
+
+        // Start the scheduler first
+        scheduler.start().await.unwrap();
+
+        // Trigger a cycle manually
+        let result = scheduler.trigger_cycle().await;
+        assert!(result.is_ok());
+
+        // Stop the scheduler
+        scheduler.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_trigger_cycle_when_stopped() {
+        let storage = Arc::new(MockLifecycleStorage::new());
+        let policy = Arc::new(crate::policy::DefaultTransitionPolicy::new());
+        let scheduler = LifecycleScheduler::new(storage, policy);
+
+        // Don't start - try to trigger
+        let result = scheduler.trigger_cycle().await;
+        assert!(result.is_err());
+    }
 }

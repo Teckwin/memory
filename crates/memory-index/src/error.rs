@@ -87,8 +87,18 @@ mod tests {
 
     #[test]
     fn test_from_tantivy_error() {
-        let err = IndexError::TantivyError("test error".to_string());
-        assert_eq!(err.to_string(), "Tantivy error: test error");
+        // Test the From trait implementation by converting tantivy error
+        let tantivy_err = tantivy::TantivyError::SystemError("test system error".to_string());
+        let err: IndexError = tantivy_err.into();
+        assert!(err.to_string().contains("test system error"));
+    }
+
+    #[test]
+    fn test_from_query_parser_error() {
+        // Test the From trait implementation for QueryParserError
+        let query_err = tantivy::query::QueryParserError::SyntaxError("invalid syntax".to_string());
+        let err: IndexError = query_err.into();
+        assert!(err.to_string().contains("invalid syntax"));
     }
 
     #[test]

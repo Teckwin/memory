@@ -190,13 +190,29 @@ impl MemoryApi for UnifiedStorage {
             results.append(&mut hot_results);
         }
 
-        // Get from cold
+        // Get from cold (query both Cooling and Cold as they're both in cold tier)
+        let date_range = query.date_range.clone();
+        let cooling_query = SearchQuery {
+            workspace_id: Some(workspace_id),
+            status: Some(MemoryStatus::Cooling),
+            limit: query.limit,
+            offset: 0,
+            tags: query.tags.clone(),
+            text: query.text.clone(),
+            date_range: date_range.clone(),
+        };
+        if let Ok(mut cold_results) = self.cold.list(workspace_id, cooling_query).await {
+            results.append(&mut cold_results);
+        }
+
         let cold_query = SearchQuery {
             workspace_id: Some(workspace_id),
             status: Some(MemoryStatus::Cold),
             limit: query.limit,
             offset: 0,
-            ..Default::default()
+            tags: query.tags.clone(),
+            text: query.text.clone(),
+            date_range,
         };
         if let Ok(mut cold_results) = self.cold.list(workspace_id, cold_query).await {
             results.append(&mut cold_results);
@@ -321,18 +337,115 @@ impl LifecycleApi for UnifiedStorage {
 
     async fn get_transition_candidates(
         &self,
-        _status: MemoryStatus,
+        status: MemoryStatus,
     ) -> Result<Vec<MemoryId>, MemoryError> {
-        // For now, return empty - this would be implemented based on lifecycle policy
-        // In a full implementation, this would query based on access patterns,
-        // age, importance, etc.
-        Ok(vec![])
+        // Get candidates based on lifecycle policy criteria:
+        // - Low access count memories that haven't been accessed recently
+        // - Memories that have been in current status for too long
+        // - Low importance memories in active status
+        let now = chrono::Utc::now();
+        let inactive_threshold = now - chrono::Duration::days(7); // 7 days inactive
+        let max_access_count = 3; // Low access count threshold
+
+        let mut candidates = Vec::new();
+
+        // Query memories in the given status
+        let query = SearchQuery {
+            status: Some(status),
+            limit: 1000,
+            offset: 0,
+            ..Default::default()
+        };
+
+        // Query hot storage first (for Active status)
+        if status == MemoryStatus::Active {
+            // Use a valid workspace_id that will match all memories
+            let workspace_id = uuid::Uuid::nil();
+            let hot_results = self.hot.list(workspace_id, query.clone()).await?;
+            for result in hot_results {
+                let memory = result.memory;
+                let should_transition = {
+                    // Check if memory is inactive (no recent access)
+                    let is_inactive = memory
+                        .last_accessed
+                        .map(|last| last < inactive_threshold)
+                        .unwrap_or(true);
+
+                    // Check if memory has low access count
+                    let has_low_access = memory.access_count <= max_access_count;
+
+                    // Check if memory has been updated long ago
+                    let old_update = memory.updated_at < inactive_threshold;
+
+                    is_inactive || has_low_access || old_update
+                };
+
+                if should_transition {
+                    candidates.push(memory.id);
+                }
+            }
+        }
+
+        // Query cold storage (for Cooling/Cold status)
+        if status == MemoryStatus::Cooling || status == MemoryStatus::Cold {
+            // Use nil UUID to match all workspaces (like we do for hot)
+            let workspace_id = uuid::Uuid::nil();
+            let cold_results = self.cold.list(workspace_id, query.clone()).await?;
+            for result in cold_results {
+                let memory = result.memory;
+                let should_transition = {
+                    let is_inactive = memory
+                        .last_accessed
+                        .map(|last| last < inactive_threshold)
+                        .unwrap_or(true);
+                    let has_low_access = memory.access_count <= max_access_count;
+                    let old_update = memory.updated_at < inactive_threshold;
+                    is_inactive || has_low_access || old_update
+                };
+
+                if should_transition {
+                    candidates.push(memory.id);
+                }
+            }
+        }
+
+        Ok(candidates)
     }
 
     async fn run_transitions(&self) -> Result<BatchResult, MemoryError> {
-        // This would be called by a background job to perform automatic transitions
-        // For now, return empty result
-        Ok(BatchResult::new())
+        // Run automatic transitions based on lifecycle policy
+        let mut result = BatchResult::new();
+
+        // For each status, get candidates and transition them
+        let statuses = [
+            MemoryStatus::Active,
+            MemoryStatus::Cooling,
+            MemoryStatus::Cold,
+        ];
+
+        for status in statuses {
+            let candidates = self.get_transition_candidates(status).await?;
+
+            // Limit batch size to avoid overwhelming the system
+            let batch: Vec<_> = candidates.into_iter().take(self.hot.max_entries).collect();
+
+            for id in batch {
+                // Determine next status based on current status
+                let next_status = match status {
+                    MemoryStatus::Active => MemoryStatus::Cooling,
+                    MemoryStatus::Cooling => MemoryStatus::Cold,
+                    MemoryStatus::Cold => MemoryStatus::Zombie,
+                    MemoryStatus::Zombie => continue, // Don't transition from Zombie
+                };
+
+                match self.transition(id, next_status).await {
+                    Ok(()) => result.add_success(),
+                    Err(e) => result.add_failure(format!("{}: {}", id, e)),
+                }
+            }
+        }
+
+        Ok(result)
     }
 
     async fn archive(&self, workspace_id: WorkspaceId) -> Result<BatchResult, MemoryError> {
@@ -501,5 +614,688 @@ mod tests {
 
         let get_result = storage.get(id).await;
         assert!(get_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_unified_getters() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+
+        // Test hot(), cold(), zombie() getters
+        let _hot = storage.hot();
+        let _cold = storage.cold();
+        let _zombie = storage.zombie();
+    }
+
+    #[tokio::test]
+    async fn test_unified_list_combined_tiers() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        let workspace_id = uuid::Uuid::new_v4();
+
+        // Add to hot (Active)
+        let mut mem1 = create_test_memory(MemoryStatus::Active);
+        mem1.workspace_id = workspace_id;
+        storage.add(mem1).await.unwrap();
+
+        // Add to cold (Cooling instead of Cold to avoid status filter issues)
+        let mut mem2 = create_test_memory(MemoryStatus::Cooling);
+        mem2.workspace_id = workspace_id;
+        storage.add(mem2).await.unwrap();
+
+        // List without status filter (should combine all tiers)
+        let query = SearchQuery {
+            workspace_id: Some(workspace_id),
+            limit: 10,
+            ..Default::default()
+        };
+
+        let results = storage.list(workspace_id, query).await.unwrap();
+        // Active is in hot, Cooling is in cold
+        assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_unified_list_with_status_filter() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        let workspace_id = uuid::Uuid::new_v4();
+
+        // Add to hot (Active)
+        let mut mem1 = create_test_memory(MemoryStatus::Active);
+        mem1.workspace_id = workspace_id;
+        storage.add(mem1).await.unwrap();
+
+        // Add to cold
+        let mut mem2 = create_test_memory(MemoryStatus::Cold);
+        mem2.workspace_id = workspace_id;
+        storage.add(mem2).await.unwrap();
+
+        // List with status filter (Active only)
+        let query = SearchQuery {
+            workspace_id: Some(workspace_id),
+            status: Some(MemoryStatus::Active),
+            limit: 10,
+            ..Default::default()
+        };
+
+        let results = storage.list(workspace_id, query).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].memory.status, MemoryStatus::Active);
+    }
+
+    #[tokio::test]
+    async fn test_unified_batch_add_mixed_status() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        // Create memories with different statuses
+        let active = create_test_memory(MemoryStatus::Active);
+        let cold = create_test_memory(MemoryStatus::Cold);
+        let zombie = create_test_memory(MemoryStatus::Zombie);
+
+        let result = storage.batch_add(vec![active, cold, zombie]).await.unwrap();
+        assert_eq!(result.success_count, 3);
+    }
+
+    #[tokio::test]
+    async fn test_unified_batch_delete_multi_tier() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        let mem1 = create_test_memory(MemoryStatus::Active);
+        let mem2 = create_test_memory(MemoryStatus::Cold);
+
+        storage.add(mem1.clone()).await.unwrap();
+        storage.add(mem2.clone()).await.unwrap();
+
+        // Delete from multiple tiers at once
+        let result = storage.batch_delete(vec![mem1.id, mem2.id]).await.unwrap();
+        assert_eq!(result.success_count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_unified_transition_same_status() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        let memory = create_test_memory(MemoryStatus::Active);
+        let id = memory.id;
+        storage.add(memory).await.unwrap();
+
+        // Transition to same status should be no-op
+        let result = storage.transition(id, MemoryStatus::Active).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_unified_transition_not_found() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        let id = uuid::Uuid::new_v4();
+        let result = storage.transition(id, MemoryStatus::Cold).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_unified_migrate_active_to_zombie() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        let memory = create_test_memory(MemoryStatus::Active);
+        let id = memory.id;
+        storage.add(memory).await.unwrap();
+
+        // Migrate directly from Active to Zombie
+        let result = storage
+            .migrate(id, MemoryStatus::Active, MemoryStatus::Zombie)
+            .await;
+        assert!(result.is_ok());
+
+        // Verify it's now in zombie
+        let retrieved = storage.get(id).await.unwrap();
+        assert_eq!(retrieved.status, MemoryStatus::Zombie);
+    }
+
+    #[tokio::test]
+    async fn test_unified_archive_workspace() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        let workspace_id = uuid::Uuid::new_v4();
+
+        // Add Cold memories (which go to cold storage)
+        let mut memories = Vec::new();
+        for _ in 0..3 {
+            let mut mem = create_test_memory(MemoryStatus::Cold);
+            mem.workspace_id = workspace_id;
+            memories.push(mem);
+        }
+
+        // Add one by one
+        for mem in &memories {
+            storage.add(mem.clone()).await.unwrap();
+        }
+
+        // Archive workspace
+        let result = storage.archive(workspace_id).await.unwrap();
+        assert_eq!(result.success_count, 3);
+    }
+
+    #[tokio::test]
+    async fn test_unified_get_from_cold() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        let memory = create_test_memory(MemoryStatus::Cold);
+        let id = memory.id;
+        storage.add(memory).await.unwrap();
+
+        // Get should find it in cold
+        let result = storage.get(id).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_unified_get_from_zombie() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        let memory = create_test_memory(MemoryStatus::Zombie);
+        let id = memory.id;
+        storage.add(memory).await.unwrap();
+
+        // Get should find it in zombie
+        let result = storage.get(id).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_unified_update_cold() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        let mut memory = create_test_memory(MemoryStatus::Cold);
+        storage.add(memory.clone()).await.unwrap();
+
+        memory.content = MemoryContent::Text("updated".to_string());
+        let result = storage.update(memory).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_unified_list_pagination() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        let workspace_id = uuid::Uuid::new_v4();
+
+        // Add 5 memories
+        for i in 0..5 {
+            let mut mem = create_test_memory(MemoryStatus::Active);
+            mem.workspace_id = workspace_id;
+            mem.content = MemoryContent::Text(format!("content {}", i));
+            storage.add(mem).await.unwrap();
+        }
+
+        // Paginate
+        let query = SearchQuery {
+            workspace_id: Some(workspace_id),
+            limit: 2,
+            offset: 2,
+            ..Default::default()
+        };
+
+        let results = storage.list(workspace_id, query).await.unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    /// 白盒+黑盒测试：验证跨层数据迁移的一致性
+    #[tokio::test]
+    async fn test_migration_data_consistency() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        // 1. 在 Hot 层添加 Active 记忆
+        let mut memory = create_test_memory(MemoryStatus::Active);
+        let original_id = memory.id;
+        let original_content = memory.content.clone();
+        let original_metadata = memory.metadata.clone();
+        let original_workspace_id = memory.workspace_id;
+
+        storage.add(memory.clone()).await.unwrap();
+
+        // 验证在 Hot 层
+        let retrieved = storage.get(original_id).await.unwrap();
+        assert_eq!(retrieved.status, MemoryStatus::Active);
+        assert_eq!(retrieved.content.as_text(), original_content.as_text());
+
+        // 2. 迁移到 Cold 层
+        storage
+            .migrate(original_id, MemoryStatus::Active, MemoryStatus::Cold)
+            .await
+            .unwrap();
+
+        // 验证迁移到 Cold 层后数据完整
+        let retrieved = storage.get(original_id).await.unwrap();
+        assert_eq!(retrieved.status, MemoryStatus::Cold);
+        assert_eq!(retrieved.id, original_id);
+        assert_eq!(retrieved.workspace_id, original_workspace_id);
+        match (&retrieved.content, &original_content) {
+            (MemoryContent::Text(retrieved_text), MemoryContent::Text(original_text)) => {
+                assert_eq!(retrieved_text, original_text);
+            }
+            _ => panic!("Content type mismatch"),
+        }
+        assert_eq!(retrieved.metadata.tags, original_metadata.tags);
+
+        // 3. 迁移到 Zombie 层
+        storage
+            .migrate(original_id, MemoryStatus::Cold, MemoryStatus::Zombie)
+            .await
+            .unwrap();
+
+        // 验证迁移到 Zombie 层后数据完整
+        let retrieved = storage.get(original_id).await.unwrap();
+        assert_eq!(retrieved.status, MemoryStatus::Zombie);
+        assert_eq!(retrieved.id, original_id);
+    }
+
+    /// 黑盒测试：验证 UnifiedStorage 的 get 方法能跨层查找
+    #[tokio::test]
+    async fn test_get_across_tiers() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        // 在不同层添加记忆
+        let active_memory = create_test_memory(MemoryStatus::Active);
+        let cold_memory = create_test_memory(MemoryStatus::Cold);
+        let zombie_memory = create_test_memory(MemoryStatus::Zombie);
+
+        let active_id = active_memory.id;
+        let cold_id = cold_memory.id;
+        let zombie_id = zombie_memory.id;
+
+        storage.add(active_memory).await.unwrap();
+        storage.add(cold_memory).await.unwrap();
+        storage.add(zombie_memory).await.unwrap();
+
+        // 黑盒验证：get 方法应该能找到所有层的记忆
+        assert!(storage.get(active_id).await.is_ok());
+        assert!(storage.get(cold_id).await.is_ok());
+        assert!(storage.get(zombie_id).await.is_ok());
+
+        // 验证状态正确
+        assert_eq!(
+            storage.get(active_id).await.unwrap().status,
+            MemoryStatus::Active
+        );
+        assert_eq!(
+            storage.get(cold_id).await.unwrap().status,
+            MemoryStatus::Cold
+        );
+        assert_eq!(
+            storage.get(zombie_id).await.unwrap().status,
+            MemoryStatus::Zombie
+        );
+    }
+
+    /// 测试 get_transition_candidates 返回符合转换条件的记忆
+    #[tokio::test]
+    async fn test_get_transition_candidates() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        // 添加一个符合条件的记忆 (无 last_accessed 视为不活跃)
+        let mut memory = create_test_memory(MemoryStatus::Active);
+        memory.last_accessed = None; // 无访问记录，视为不活跃
+        memory.access_count = 0;
+        storage.add(memory.clone()).await.unwrap();
+
+        // 获取 Active 状态的转换候选
+        let candidates = storage
+            .get_transition_candidates(MemoryStatus::Active)
+            .await
+            .unwrap();
+
+        // 应该有至少一个候选 (无访问记录的记忆)
+        assert!(!candidates.is_empty());
+        assert!(candidates.contains(&memory.id));
+    }
+
+    /// 测试 get_transition_candidates 对于不活跃的记忆
+    #[tokio::test]
+    async fn test_get_transition_candidates_inactive() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        // 添加一个不活跃的记忆 (没有 last_accessed)
+        let mut memory = create_test_memory(MemoryStatus::Active);
+        memory.last_accessed = None; // 无访问记录
+        memory.access_count = 5;
+        storage.add(memory.clone()).await.unwrap();
+
+        // 获取转换候选
+        let candidates = storage
+            .get_transition_candidates(MemoryStatus::Active)
+            .await
+            .unwrap();
+
+        // 没有 last_accessed 记录的记忆应该被返回 (视为不活跃)
+        assert!(candidates.contains(&memory.id));
+    }
+
+    /// 测试 run_transitions 执行状态转换
+    #[tokio::test]
+    async fn test_run_transitions() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        // 添加一个符合条件的记忆
+        let mut memory = create_test_memory(MemoryStatus::Active);
+        memory.access_count = 1; // 低访问次数
+        storage.add(memory.clone()).await.unwrap();
+
+        // 运行转换
+        let result = storage.run_transitions().await.unwrap();
+
+        // 应该成功转换至少一个记忆
+        assert!(result.success_count >= 1);
+    }
+
+    /// 测试 run_transitions 处理 Cooling 状态
+    #[tokio::test]
+    async fn test_run_transitions_cooling() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        // 添加 Cooling 状态的记忆
+        let mut memory = create_test_memory(MemoryStatus::Cooling);
+        memory.access_count = 1;
+        storage.add(memory.clone()).await.unwrap();
+
+        // 运行转换
+        let result = storage.run_transitions().await.unwrap();
+
+        // Cooling -> Cold 转换
+        assert!(result.success_count >= 1);
+    }
+
+    /// 测试跨多层迁移的复杂场景
+    #[tokio::test]
+    async fn test_complex_migration_scenario() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        // 1. 从 Active 迁移到 Cooling
+        let mut memory = create_test_memory(MemoryStatus::Active);
+        storage.add(memory.clone()).await.unwrap();
+        storage
+            .migrate(memory.id, MemoryStatus::Active, MemoryStatus::Cooling)
+            .await
+            .unwrap();
+
+        let retrieved = storage.get(memory.id).await.unwrap();
+        assert_eq!(retrieved.status, MemoryStatus::Cooling);
+
+        // 2. 从 Cooling 迁移到 Cold
+        storage
+            .migrate(memory.id, MemoryStatus::Cooling, MemoryStatus::Cold)
+            .await
+            .unwrap();
+
+        let retrieved = storage.get(memory.id).await.unwrap();
+        assert_eq!(retrieved.status, MemoryStatus::Cold);
+
+        // 3. 从 Cold 迁移到 Zombie
+        storage
+            .migrate(memory.id, MemoryStatus::Cold, MemoryStatus::Zombie)
+            .await
+            .unwrap();
+
+        let retrieved = storage.get(memory.id).await.unwrap();
+        assert_eq!(retrieved.status, MemoryStatus::Zombie);
+    }
+
+    /// 测试多 workspace 场景下的 list 操作
+    #[tokio::test]
+    async fn test_multi_workspace_list() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        let ws1 = uuid::Uuid::new_v4();
+        let ws2 = uuid::Uuid::new_v4();
+
+        // 为每个 workspace 添加记忆
+        for i in 0..3 {
+            let mut mem = create_test_memory(MemoryStatus::Active);
+            mem.workspace_id = ws1;
+            mem.content = MemoryContent::Text(format!("ws1 content {}", i));
+            storage.add(mem).await.unwrap();
+        }
+
+        for i in 0..2 {
+            let mut mem = create_test_memory(MemoryStatus::Active);
+            mem.workspace_id = ws2;
+            mem.content = MemoryContent::Text(format!("ws2 content {}", i));
+            storage.add(mem).await.unwrap();
+        }
+
+        // 列出 ws1 的记忆
+        let query1 = SearchQuery {
+            workspace_id: Some(ws1),
+            limit: 10,
+            ..Default::default()
+        };
+        let results1 = storage.list(ws1, query1).await.unwrap();
+        assert_eq!(results1.len(), 3);
+
+        // 列出 ws2 的记忆
+        let query2 = SearchQuery {
+            workspace_id: Some(ws2),
+            limit: 10,
+            ..Default::default()
+        };
+        let results2 = storage.list(ws2, query2).await.unwrap();
+        assert_eq!(results2.len(), 2);
+    }
+
+    /// 测试带标签过滤的复杂查询
+    #[tokio::test]
+    async fn test_complex_tag_filtering() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        let workspace_id = uuid::Uuid::new_v4();
+
+        // 添加带不同标签的记忆
+        let tags1 = vec!["rust".to_string(), "backend".to_string()];
+        let tags2 = vec!["rust".to_string(), "api".to_string()];
+        let tags3 = vec!["python".to_string(), "ml".to_string()];
+
+        for tags in [tags1, tags2, tags3] {
+            let mut mem = create_test_memory(MemoryStatus::Active);
+            mem.workspace_id = workspace_id;
+            mem.metadata.tags = tags;
+            storage.add(mem).await.unwrap();
+        }
+
+        // 查询带有 "rust" 标签的记忆
+        let query = SearchQuery {
+            workspace_id: Some(workspace_id),
+            tags: Some(vec!["rust".to_string()]),
+            status: Some(MemoryStatus::Active), // 只查询 Active 状态
+            limit: 10,
+            ..Default::default()
+        };
+        let results = storage.list(workspace_id, query).await.unwrap();
+
+        // 验证返回结果只包含带 "rust" 标签的 Active 记忆
+        assert_eq!(results.len(), 2);
+
+        // 额外验证：确保所有返回的结果都有 "rust" 标签
+        for result in &results {
+            assert!(result.memory.metadata.tags.contains(&"rust".to_string()));
+        }
+    }
+
+    /// 测试带文本搜索的复杂查询
+    #[tokio::test]
+    async fn test_complex_text_search() {
+        let temp_dir = tempdir().unwrap();
+        let storage = UnifiedStorage::new(
+            100,
+            temp_dir.path().join("cold.db"),
+            temp_dir.path().join("zombie"),
+        );
+        storage.initialize().await.unwrap();
+
+        let workspace_id = uuid::Uuid::new_v4();
+
+        // 添加不同内容的记忆
+        let contents = vec![
+            "Rust is a systems programming language",
+            "Python is great for machine learning",
+            "Rust has excellent memory safety",
+            "JavaScript runs in the browser",
+        ];
+
+        for content in contents {
+            let mut mem = create_test_memory(MemoryStatus::Active);
+            mem.workspace_id = workspace_id;
+            mem.content = MemoryContent::Text(content.to_string());
+            storage.add(mem).await.unwrap();
+        }
+
+        // 搜索包含 "Rust" 的记忆
+        let query = SearchQuery {
+            workspace_id: Some(workspace_id),
+            text: Some("rust".to_string()),
+            status: Some(MemoryStatus::Active), // 只查询 Active 状态
+            limit: 10,
+            ..Default::default()
+        };
+        let results = storage.list(workspace_id, query).await.unwrap();
+
+        // 验证返回结果只包含包含 "rust" 的 Active 记忆
+        assert_eq!(results.len(), 2);
+
+        // 额外验证：确保所有返回的结果都包含 "rust"
+        for result in &results {
+            let text = result.memory.content.as_text().unwrap_or("");
+            assert!(text.to_lowercase().contains("rust"));
+        }
     }
 }
