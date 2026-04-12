@@ -385,6 +385,7 @@ async fn test_train_with_valid_data() {
 #[tokio::test]
 async fn test_train_insufficient_data() {
     use memos_core::ModelType;
+    let _ = ModelType::Embedding;
 
     let temp_dir = tempfile::tempdir().unwrap();
     let storage = Arc::new(UnifiedStorage::new(
@@ -503,7 +504,7 @@ async fn test_load_model_after_training() {
 
     // Now load the model - the model_manager may have a different ID after reload
     // So we just check that loading succeeds and we get a valid LoadedModel
-    let loaded = service.load_model(train_result.model_id).await;
+    let _loaded = service.load_model(train_result.model_id).await;
     // Loading may fail due to ID mismatch after refresh, but model file exists
     // Just verify that training created a valid model file
     assert!(train_result.output_path.exists());
@@ -740,6 +741,7 @@ async fn test_train_data_edge_cases() {
 
     let result = service.train(data_empty, TrainParams::default()).await;
     // 空文本可能失败或产生警告，但不应崩溃
+    assert!(result.is_err() || result.unwrap().output_path.exists());
 
     // 测试长文本
     let long_text = "word ".repeat(1000);

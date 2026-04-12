@@ -611,7 +611,7 @@ mod tests {
         let workspace_id = Uuid::new_v4();
 
         // Add memories
-        for i in 0..3 {
+        for _ in 0..3 {
             let mem = create_test_memory(workspace_id, vec![], MemoryStatus::Active);
             index.add(&mem).await.unwrap();
         }
