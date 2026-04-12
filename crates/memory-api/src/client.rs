@@ -1619,7 +1619,7 @@ mod stress_tests {
 #[cfg(test)]
 mod boundary_tests {
     use super::*;
-    use memory_core::{MemoryContent, MemorySource};
+    use memory_core::{MemoryContent, MemorySource, MemoryStatus, SearchQuery};
     use std::sync::Arc;
 
     // Helper function to create a test memory with custom content
@@ -1634,6 +1634,11 @@ mod boundary_tests {
         })
         .with_importance(importance);
         MemoryEntry::new(workspace_id, content, metadata)
+    }
+
+    // Helper function for simple test memory creation (used by coverage tests)
+    fn create_test_memory(workspace_id: WorkspaceId, importance: f32) -> MemoryEntry {
+        create_test_memory_with_content(workspace_id, "test content", importance)
     }
 
     // Helper function to create a test workspace
@@ -2001,5 +2006,120 @@ mod boundary_tests {
             results.len() <= 50,
             "Should return at most 50 results when offset=50"
         );
+    }
+
+    /// 测试 config() getter - 覆盖 lines 55-56
+    #[tokio::test]
+    async fn test_client_config_getter() {
+        let config = ClientConfig {
+            storage_enabled: true,
+            index_enabled: false,
+        };
+        let client = MemoryClient::with_config(config);
+
+        let retrieved_config = client.config();
+        assert_eq!(retrieved_config.storage_enabled, true);
+        assert_eq!(retrieved_config.index_enabled, false);
+    }
+
+    /// 测试带 status 过滤的 list - 覆盖 line 169
+    #[tokio::test]
+    async fn test_list_with_status_filter() {
+        let client = MemoryClient::new();
+        let workspace_id = uuid::Uuid::new_v4();
+
+        // 添加不同状态的记忆
+        let mut active_mem = create_test_memory(workspace_id, 0.8);
+        active_mem.status = MemoryStatus::Active;
+        let active_id = active_mem.id;
+
+        let mut cold_mem = create_test_memory(workspace_id, 0.5);
+        cold_mem.status = MemoryStatus::Cold;
+        let _cold_id = cold_mem.id;
+
+        MemoryApi::add(&client, active_mem).await.unwrap();
+        MemoryApi::add(&client, cold_mem).await.unwrap();
+
+        // 只查询 Active 状态
+        let query = SearchQuery {
+            workspace_id: Some(workspace_id),
+            status: Some(MemoryStatus::Active),
+            limit: 10,
+            ..Default::default()
+        };
+
+        let results = MemoryApi::list(&client, workspace_id, query).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].memory.id, active_id);
+    }
+
+    /// 测试带 tags 过滤的 list - 覆盖 line 176
+    #[tokio::test]
+    async fn test_list_with_tags_filter() {
+        let client = MemoryClient::new();
+        let workspace_id = uuid::Uuid::new_v4();
+
+        // 添加不同 tags 的记忆
+        let mut mem1 = create_test_memory(workspace_id, 0.8);
+        mem1.metadata.tags = vec!["rust".to_string()];
+
+        let mut mem2 = create_test_memory(workspace_id, 0.5);
+        mem2.metadata.tags = vec!["python".to_string()];
+
+        MemoryApi::add(&client, mem1).await.unwrap();
+        MemoryApi::add(&client, mem2).await.unwrap();
+
+        // 只查询有 rust tag 的
+        let query = SearchQuery {
+            workspace_id: Some(workspace_id),
+            tags: Some(vec!["rust".to_string()]),
+            limit: 10,
+            ..Default::default()
+        };
+
+        let results = MemoryApi::list(&client, workspace_id, query).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].memory.metadata.tags, vec!["rust".to_string()]);
+    }
+
+    /// 测试 batch_add 当 storage 禁用时 - 覆盖 lines 314-317
+    #[tokio::test]
+    async fn test_batch_add_storage_disabled() {
+        let config = ClientConfig {
+            storage_enabled: false,
+            index_enabled: true,
+        };
+        let client = MemoryClient::with_config(config);
+        let workspace_id = uuid::Uuid::new_v4();
+
+        let memories = vec![
+            create_test_memory(workspace_id, 0.8),
+            create_test_memory(workspace_id, 0.5),
+        ];
+
+        let result = client.batch_add(memories).await;
+        // 当 storage 禁用时应该返回错误
+        assert!(result.is_err());
+    }
+
+    /// 测试 stats 方法 - 覆盖 line 360
+    #[tokio::test]
+    async fn test_workspace_stats() {
+        let client = MemoryClient::new();
+        let workspace = create_test_workspace("Test");
+        let workspace_id = workspace.id;
+
+        WorkspaceApi::create(&client, workspace).await.unwrap();
+
+        // 添加一些记忆
+        for i in 0..3 {
+            let mut memory = create_test_memory(workspace_id, 0.8);
+            memory.content = MemoryContent::Text(format!("content {}", i));
+            MemoryApi::add(&client, memory).await.unwrap();
+        }
+
+        // 获取统计信息
+        let stats = WorkspaceApi::stats(&client, workspace_id).await.unwrap();
+        assert_eq!(stats.total_memories, 3);
     }
 }

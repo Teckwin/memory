@@ -65,6 +65,14 @@ impl LifecycleManager {
         &self,
         status: MemoryStatus,
     ) -> Result<Vec<MemoryId>, MemoryError> {
+        self.get_candidates_for_status_impl(status).await
+    }
+
+    /// Internal implementation for testing
+    pub async fn get_candidates_for_status_impl(
+        &self,
+        status: MemoryStatus,
+    ) -> Result<Vec<MemoryId>, MemoryError> {
         let query = SearchQuery {
             text: None,
             tags: None,

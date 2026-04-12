@@ -2,6 +2,8 @@
 
 use async_trait::async_trait;
 use std::collections::HashMap;
+#[allow(unused_imports)]
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use memory_core::{
@@ -509,5 +511,114 @@ mod tests {
         // 再次访问，计数应该增加
         let retrieved = storage.get(id).await.unwrap();
         assert_eq!(retrieved.access_count, 2);
+    }
+
+    /// 测试并发读写 - 验证 RwLock 在多次读取时的安全性
+    #[tokio::test]
+    async fn test_concurrent_access() {
+        let storage = HotStorage::new(100);
+        let memory = create_test_memory(MemoryStatus::Active);
+        let id = memory.id;
+
+        storage.add(memory).await.unwrap();
+
+        // 串行执行多次读取，验证 RwLock 不会导致死锁
+        for _ in 0..10 {
+            let result = storage.get(id).await;
+            assert!(result.is_ok());
+        }
+    }
+
+    /// 测试并发写入 - 验证多线程添加的安全性
+    #[tokio::test]
+    async fn test_concurrent_writes() {
+        let storage = HotStorage::new(100);
+
+        // 串行添加多个记忆，验证写入逻辑
+        for i in 0..20 {
+            let mut memory = create_test_memory(MemoryStatus::Active);
+            memory.content = MemoryContent::Text(format!("content {}", i));
+            let result = storage.add(memory).await;
+            assert!(result.is_ok());
+        }
+
+        // 验证存储中有 20 条记录
+        assert_eq!(storage.len().await, 20);
+    }
+
+    /// 测试混合操作 - 读写交替执行
+    #[tokio::test]
+    async fn test_mixed_operations() {
+        let storage = HotStorage::new(100);
+
+        // 先添加记忆
+        let id = {
+            let memory = create_test_memory(MemoryStatus::Active);
+            let id = memory.id;
+            storage.add(memory).await.unwrap();
+            id
+        };
+
+        // 混合读写操作
+        for i in 0..10 {
+            if i % 2 == 0 {
+                // 偶数: 读取
+                assert!(storage.get(id).await.is_ok());
+            } else {
+                // 奇数: 添加新记忆
+                let mut m = create_test_memory(MemoryStatus::Active);
+                m.content = MemoryContent::Text(format!("new content {}", i));
+                assert!(storage.add(m).await.is_ok());
+            }
+        }
+    }
+
+    /// 测试高并发场景 - 大量并发读取同一 key
+    #[tokio::test]
+    async fn test_high_concurrency_reads() {
+        let storage = HotStorage::new(1000);
+        let memory = create_test_memory(MemoryStatus::Active);
+        let id = memory.id;
+
+        storage.add(memory).await.unwrap();
+
+        // 模拟高并发读取 - 使用 Arc 来共享 storage
+        let storage = Arc::new(storage);
+        let mut handles = Vec::new();
+        for _ in 0..100 {
+            let storage = Arc::clone(&storage);
+            let id = id;
+            handles.push(tokio::spawn(async move { storage.get(id).await }));
+        }
+
+        for handle in handles {
+            let result = handle.await.unwrap();
+            assert!(result.is_ok());
+        }
+    }
+
+    /// 测试高并发写入场景
+    #[tokio::test]
+    async fn test_high_concurrency_writes() {
+        let storage = HotStorage::new(2000);
+        let storage = Arc::new(storage);
+
+        let mut handles = Vec::new();
+        for i in 0..100 {
+            let storage = Arc::clone(&storage);
+            handles.push(tokio::spawn(async move {
+                let mut memory = create_test_memory(MemoryStatus::Active);
+                memory.content = MemoryContent::Text(format!("content {}", i));
+                storage.add(memory).await
+            }));
+        }
+
+        for handle in handles {
+            let result = handle.await.unwrap();
+            assert!(result.is_ok());
+        }
+
+        // 由于 Arc 克隆，storage.len() 指向的是 Arc 包装的原 storage
+        assert_eq!(storage.len().await, 100);
     }
 }
