@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+description = "Training module for memos - Memory Management System"
+documentation = "https://github.com/Teckwin/memory"
+repository = "https://github.com/Teckwin/memory"
+readme = "../../README.md"
 
 [dependencies]
 memos-core = { version = "0.1.0", path = "../memos-core" }
