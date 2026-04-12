@@ -1,0 +1,17 @@
+[package]
+name = "memos-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+memos-core = { path = "../memos-core" }
+tokio = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+async-trait = "0.1"
+uuid = { workspace = true, features = ["v4", "serde"] }
+chrono = { workspace = true }
