@@ -515,3 +515,21 @@ async fn test_load_nonexistent_model() {
     let result = service.load_model(Uuid::new_v4()).await;
     assert!(result.is_err());
 }
+
+#[tokio::test]
+async fn test_with_preparer() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let storage = Arc::new(UnifiedStorage::new(
+        100,
+        temp_dir.path().join("cold.db"),
+        temp_dir.path().join("zombie"),
+    ));
+
+    storage.initialize().await.unwrap();
+
+    let custom_preparer = DataPreparer::new();
+    let result =
+        TrainService::with_preparer(storage, temp_dir.path().join("models"), custom_preparer).await;
+
+    assert!(result.is_ok());
+}

@@ -531,4 +531,209 @@ mod tests {
         let delete_result = storage.batch_delete(ids).await.unwrap();
         assert_eq!(delete_result.success_count, 0); // None exist
     }
+
+    #[tokio::test]
+    async fn test_get_nonexistent_memory() {
+        let temp_dir = tempdir().unwrap();
+        let base_path = temp_dir.path().join("zombie");
+        let storage = ZombieStorage::new(base_path);
+        storage.initialize().await.unwrap();
+
+        let id = uuid::Uuid::new_v4();
+        let result = storage.get(id).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_update_nonexistent_memory() {
+        let temp_dir = tempdir().unwrap();
+        let base_path = temp_dir.path().join("zombie");
+        let storage = ZombieStorage::new(base_path);
+        storage.initialize().await.unwrap();
+
+        let memory = create_test_memory(MemoryStatus::Zombie);
+        let result = storage.update(memory).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_delete_nonexistent_memory() {
+        let temp_dir = tempdir().unwrap();
+        let base_path = temp_dir.path().join("zombie");
+        let storage = ZombieStorage::new(base_path);
+        storage.initialize().await.unwrap();
+
+        let id = uuid::Uuid::new_v4();
+        let result = storage.delete(id).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_list_with_filters() {
+        let temp_dir = tempdir().unwrap();
+        let base_path = temp_dir.path().join("zombie");
+        let storage = ZombieStorage::new(base_path);
+        storage.initialize().await.unwrap();
+
+        let workspace_id = uuid::Uuid::new_v4();
+
+        // Add memories with different tags
+        for i in 0..3 {
+            let mut memory = create_test_memory(MemoryStatus::Zombie);
+            memory.workspace_id = workspace_id;
+            if i == 0 {
+                memory.metadata.tags = vec!["tag1".to_string()];
+            } else {
+                memory.metadata.tags = vec!["tag2".to_string()];
+            }
+            storage.add(memory).await.unwrap();
+        }
+
+        // Filter by tag
+        let query = SearchQuery {
+            workspace_id: Some(workspace_id),
+            tags: Some(vec!["tag1".to_string()]),
+            limit: 10,
+            ..Default::default()
+        };
+
+        let results = storage.list(workspace_id, query).await.unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_with_text_search() {
+        let temp_dir = tempdir().unwrap();
+        let base_path = temp_dir.path().join("zombie");
+        let storage = ZombieStorage::new(base_path);
+        storage.initialize().await.unwrap();
+
+        let workspace_id = uuid::Uuid::new_v4();
+
+        let mut memory = create_test_memory(MemoryStatus::Zombie);
+        memory.workspace_id = workspace_id;
+        memory.content = MemoryContent::Text("unique search term here".to_string());
+        storage.add(memory).await.unwrap();
+
+        let query = SearchQuery {
+            workspace_id: Some(workspace_id),
+            text: Some("unique search".to_string()),
+            limit: 10,
+            ..Default::default()
+        };
+
+        let results = storage.list(workspace_id, query).await.unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_batch_add_mixed_status() {
+        let temp_dir = tempdir().unwrap();
+        let base_path = temp_dir.path().join("zombie");
+        let storage = ZombieStorage::new(base_path);
+        storage.initialize().await.unwrap();
+
+        let mut zombie = create_test_memory(MemoryStatus::Zombie);
+        let mut active = create_test_memory(MemoryStatus::Active);
+
+        let result = storage.batch_add(vec![zombie, active]).await.unwrap();
+        assert_eq!(result.success_count, 1);
+        assert!(result.failure_count >= 1);
+    }
+
+    #[tokio::test]
+    async fn test_batch_delete_partial() {
+        let temp_dir = tempdir().unwrap();
+        let base_path = temp_dir.path().join("zombie");
+        let storage = ZombieStorage::new(base_path);
+        storage.initialize().await.unwrap();
+
+        let memory = create_test_memory(MemoryStatus::Zombie);
+        let id = memory.id;
+        storage.add(memory).await.unwrap();
+
+        // One exists, one doesn't
+        let ids = vec![id, uuid::Uuid::new_v4()];
+
+        let result = storage.batch_delete(ids).await.unwrap();
+        assert_eq!(result.success_count, 1);
+        assert_eq!(result.failure_count, 1);
+    }
+
+    /// 白盒测试：验证 Zombie 记忆的读写完全对等
+    #[tokio::test]
+    async fn test_data_roundtrip_consistency() {
+        let temp_dir = tempdir().unwrap();
+        let storage = ZombieStorage::new(temp_dir.path().to_path_buf());
+        storage.initialize().await.unwrap();
+
+        let memory = create_test_memory(MemoryStatus::Zombie);
+        let original_id = memory.id;
+        let original_content = memory.content.clone();
+        let original_metadata = memory.metadata.clone();
+        let original_workspace_id = memory.workspace_id;
+        let original_created_at = memory.created_at;
+        let original_updated_at = memory.updated_at;
+        let original_access_count = memory.access_count;
+
+        // 存储
+        storage.add(memory).await.unwrap();
+
+        // 读取
+        let retrieved = storage.get(original_id).await.unwrap();
+
+        // 验证数据完全对等
+        assert_eq!(retrieved.id, original_id);
+        assert_eq!(retrieved.workspace_id, original_workspace_id);
+        assert_eq!(retrieved.status, MemoryStatus::Zombie);
+        assert_eq!(retrieved.access_count, original_access_count);
+        assert_eq!(retrieved.created_at, original_created_at);
+        assert_eq!(retrieved.updated_at, original_updated_at);
+
+        // 验证 content
+        match (&original_content, &retrieved.content) {
+            (MemoryContent::Text(original), MemoryContent::Text(retrieved)) => {
+                assert_eq!(original, retrieved);
+            }
+            _ => panic!("Content type mismatch"),
+        }
+
+        // 验证 metadata
+        assert_eq!(retrieved.metadata.tags, original_metadata.tags);
+    }
+
+    /// 黑盒测试：通过 list 接口验证数据完整性
+    #[tokio::test]
+    async fn test_list_data_consistency() {
+        let temp_dir = tempdir().unwrap();
+        let storage = ZombieStorage::new(temp_dir.path().to_path_buf());
+        storage.initialize().await.unwrap();
+
+        let workspace_id = uuid::Uuid::new_v4();
+
+        // 添加多个记忆
+        for i in 0..5 {
+            let mut memory = create_test_memory(MemoryStatus::Zombie);
+            memory.workspace_id = workspace_id;
+            memory.content = MemoryContent::Text(format!("archived content {}", i));
+            storage.add(memory).await.unwrap();
+        }
+
+        // 黑盒验证：通过 list 接口
+        let query = SearchQuery {
+            workspace_id: Some(workspace_id),
+            limit: 10,
+            ..Default::default()
+        };
+
+        let results = storage.list(workspace_id, query).await.unwrap();
+        assert_eq!(results.len(), 5);
+
+        // 验证每个返回的结果数据完整性
+        for result in &results {
+            assert!(!result.memory.id.is_nil());
+            assert_eq!(result.memory.status, MemoryStatus::Zombie);
+            assert!(result.memory.content.as_text().is_some());
+        }
+    }
 }

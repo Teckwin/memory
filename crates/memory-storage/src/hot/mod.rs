@@ -14,7 +14,7 @@ pub struct HotStorage {
     /// In-memory cache of active memories
     cache: RwLock<HashMap<MemoryId, MemoryEntry>>,
     /// Maximum number of entries to keep in hot storage
-    max_entries: usize,
+    pub max_entries: usize,
 }
 
 impl HotStorage {
@@ -154,7 +154,7 @@ impl MemoryApi for HotStorage {
 
         let mut results: Vec<SearchResult> = cache
             .values()
-            .filter(|m| m.workspace_id == workspace_id)
+            .filter(|m| workspace_id.is_nil() || m.workspace_id == workspace_id)
             .filter(|m| {
                 // Apply status filter if specified
                 if let Some(status) = query.status {
@@ -366,5 +366,148 @@ mod tests {
         }
 
         assert_eq!(storage.len().await, 3);
+    }
+
+    #[tokio::test]
+    async fn test_with_capacity() {
+        let storage = HotStorage::with_capacity(50, 10);
+        assert_eq!(storage.len().await, 0);
+        assert!(storage.is_empty().await);
+    }
+
+    #[tokio::test]
+    async fn test_contains() {
+        let storage = HotStorage::new(100);
+        let memory = create_test_memory(MemoryStatus::Active);
+        let id = memory.id;
+
+        assert!(!storage.contains(id).await);
+
+        storage.add(memory).await.unwrap();
+
+        assert!(storage.contains(id).await);
+    }
+
+    #[tokio::test]
+    async fn test_ids() {
+        let storage = HotStorage::new(100);
+        let memory = create_test_memory(MemoryStatus::Active);
+
+        storage.add(memory).await.unwrap();
+
+        let ids = storage.ids().await;
+        assert_eq!(ids.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_load_batch() {
+        let storage = HotStorage::new(100);
+
+        let memories: Vec<MemoryEntry> = (0..5)
+            .map(|_| create_test_memory(MemoryStatus::Active))
+            .collect();
+
+        storage.load_batch(memories).await;
+
+        assert_eq!(storage.len().await, 5);
+    }
+
+    #[tokio::test]
+    async fn test_remove() {
+        let storage = HotStorage::new(100);
+        let memory = create_test_memory(MemoryStatus::Active);
+        let id = memory.id;
+
+        storage.add(memory).await.unwrap();
+        let removed = storage.remove(id).await;
+
+        assert!(removed.is_some());
+        assert!(!storage.contains(id).await);
+    }
+
+    /// 白盒测试：验证 Active 记忆的读写完全对等
+    #[tokio::test]
+    async fn test_data_roundtrip_consistency() {
+        let storage = HotStorage::new(100);
+
+        let mut memory = create_test_memory(MemoryStatus::Active);
+        let original_id = memory.id;
+        let original_content = memory.content.clone();
+        let original_metadata = memory.metadata.clone();
+        let original_workspace_id = memory.workspace_id;
+        let original_access_count = memory.access_count;
+
+        // 存储
+        storage.add(memory).await.unwrap();
+
+        // 读取
+        let retrieved = storage.get(original_id).await.unwrap();
+
+        // 验证数据完全对等
+        assert_eq!(retrieved.id, original_id);
+        assert_eq!(retrieved.workspace_id, original_workspace_id);
+        assert_eq!(retrieved.status, MemoryStatus::Active);
+        assert_eq!(retrieved.access_count, original_access_count + 1); // get() 会增加访问计数
+
+        // 验证 content
+        match (&original_content, &retrieved.content) {
+            (MemoryContent::Text(original), MemoryContent::Text(retrieved)) => {
+                assert_eq!(original, retrieved);
+            }
+            _ => panic!("Content type mismatch"),
+        }
+
+        // 验证 metadata
+        assert_eq!(retrieved.metadata.tags, original_metadata.tags);
+    }
+
+    /// 黑盒测试：验证 list 接口返回的数据一致性
+    #[tokio::test]
+    async fn test_list_data_consistency() {
+        let storage = HotStorage::new(100);
+        let workspace_id = uuid::Uuid::new_v4();
+
+        // 添加多个记忆
+        for i in 0..5 {
+            let mut memory = create_test_memory(MemoryStatus::Active);
+            memory.workspace_id = workspace_id;
+            memory.content = MemoryContent::Text(format!("content {}", i));
+            storage.add(memory).await.unwrap();
+        }
+
+        // 黑盒验证：通过 list 接口
+        let query = SearchQuery {
+            workspace_id: Some(workspace_id),
+            limit: 10,
+            ..Default::default()
+        };
+
+        let results = storage.list(workspace_id, query).await.unwrap();
+        assert_eq!(results.len(), 5);
+
+        // 验证每个返回的结果数据完整性
+        for result in &results {
+            assert!(!result.memory.id.is_nil());
+            assert!(!result.memory.workspace_id.is_nil());
+            assert_eq!(result.memory.status, MemoryStatus::Active);
+        }
+    }
+
+    /// 测试访问计数更新
+    #[tokio::test]
+    async fn test_access_count_increment() {
+        let storage = HotStorage::new(100);
+        let memory = create_test_memory(MemoryStatus::Active);
+        let id = memory.id;
+
+        storage.add(memory).await.unwrap();
+
+        // 初始访问计数为 0
+        let retrieved = storage.get(id).await.unwrap();
+        assert_eq!(retrieved.access_count, 1);
+
+        // 再次访问，计数应该增加
+        let retrieved = storage.get(id).await.unwrap();
+        assert_eq!(retrieved.access_count, 2);
     }
 }
