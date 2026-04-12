@@ -6,9 +6,9 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-memos-core = { path = "../memos-core" }
-memos-storage = { path = "../memos-storage" }
-memos-index = { path = "../memos-index" }
+memos-core = { version = "0.1.0", path = "../memos-core" }
+memos-storage = { version = "0.1.0", path = "../memos-storage" }
+memos-index = { version = "0.1.0", path = "../memos-index" }
 tokio = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
