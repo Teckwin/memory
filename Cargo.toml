@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/memos",
     "crates/memos-core",
     "crates/memos-api",
     "crates/memos-storage",

@@ -639,6 +639,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "memos"
+version = "0.1.0"
+dependencies = [
+ "memos-api",
+ "memos-core",
+ "memos-index",
+ "memos-lifecycle",
+ "memos-storage",
+ "memos-train",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "memos-api"
 version = "0.1.0"
 dependencies = [
