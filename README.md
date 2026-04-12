@@ -1,4 +1,4 @@
-# Memory Management System
+# Memos - Memory Management System
 
 A local memory management system for AI applications, providing efficient memory storage, retrieval, and automatic learning capabilities.
 
@@ -15,15 +15,15 @@ A local memory management system for AI applications, providing efficient memory
 ## Project Structure
 
 ```
-memory/
+memos/
 ├── Cargo.toml              # Workspace root
 ├── crates/
-│   ├── memory-core/        # Core types and traits
-│   ├── memory-api/         # Client API
-│   ├── memory-storage/     # Storage layer (hot/cold/zombie)
-│   ├── memory-index/       # Index layer (vector/fulltext/hybrid)
-│   ├── memory-lifecycle/   # Lifecycle management
-│   └── memory-train/       # Training module
+│   ├── memos-core/        # Core types and traits
+│   ├── memos-api/         # Client API
+│   ├── memos-storage/     # Storage layer (hot/cold/zombie)
+│   ├── memos-index/       # Index layer (vector/fulltext/hybrid)
+│   ├── memos-lifecycle/   # Lifecycle management
+│   └── memos-train/       # Training module
 ├── docs/                   # Documentation
 │   ├── README.md          # (EN) System documentation
 │   ├── README-ZH.md       # (ZH) 系统文档
