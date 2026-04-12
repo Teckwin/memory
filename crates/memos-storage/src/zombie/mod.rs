@@ -633,8 +633,8 @@ mod tests {
         let storage = ZombieStorage::new(base_path);
         storage.initialize().await.unwrap();
 
-        let mut zombie = create_test_memory(MemoryStatus::Zombie);
-        let mut active = create_test_memory(MemoryStatus::Active);
+        let zombie = create_test_memory(MemoryStatus::Zombie);
+        let active = create_test_memory(MemoryStatus::Active);
 
         let result = storage.batch_add(vec![zombie, active]).await.unwrap();
         assert_eq!(result.success_count, 1);

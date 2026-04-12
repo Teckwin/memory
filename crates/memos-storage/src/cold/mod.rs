@@ -635,7 +635,7 @@ mod tests {
         ];
 
         for status in statuses {
-            let mut memory = create_test_memory(status);
+            let memory = create_test_memory(status);
             let original_id = memory.id;
             let original_content = memory.content.clone();
             let original_metadata = memory.metadata.clone();

@@ -432,7 +432,7 @@ mod tests {
     async fn test_data_roundtrip_consistency() {
         let storage = HotStorage::new(100);
 
-        let mut memory = create_test_memory(MemoryStatus::Active);
+        let memory = create_test_memory(MemoryStatus::Active);
         let original_id = memory.id;
         let original_content = memory.content.clone();
         let original_metadata = memory.metadata.clone();

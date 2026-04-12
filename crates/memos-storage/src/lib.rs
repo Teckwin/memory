@@ -929,7 +929,7 @@ mod tests {
         storage.initialize().await.unwrap();
 
         // 1. 在 Hot 层添加 Active 记忆
-        let mut memory = create_test_memory(MemoryStatus::Active);
+        let memory = create_test_memory(MemoryStatus::Active);
         let original_id = memory.id;
         let original_content = memory.content.clone();
         let original_metadata = memory.metadata.clone();
@@ -1130,7 +1130,7 @@ mod tests {
         storage.initialize().await.unwrap();
 
         // 1. 从 Active 迁移到 Cooling
-        let mut memory = create_test_memory(MemoryStatus::Active);
+        let memory = create_test_memory(MemoryStatus::Active);
         storage.add(memory.clone()).await.unwrap();
         storage
             .migrate(memory.id, MemoryStatus::Active, MemoryStatus::Cooling)
