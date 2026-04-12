@@ -355,7 +355,7 @@ async fn test_workspace_stats() {
 
     // Verify stats
     assert_eq!(stats.total_memories, 5);
-    assert!(stats.total_memories >= 0);
+    assert!(stats.total_memories > 0);
 }
 
 // ============================================================
@@ -701,7 +701,7 @@ async fn test_operations_after_invalid_workspace() {
 
     // Try to add memory to nil workspace (invalid)
     let invalid_memory = create_test_memory(WorkspaceId::nil(), "Invalid memory");
-    let invalid_result = MemoryApi::add(&*client, invalid_memory).await;
+    let _invalid_result = MemoryApi::add(&*client, invalid_memory).await;
 
     // The system should handle this gracefully - either reject or accept
     // After handling, operations on valid workspace should still work
@@ -773,7 +773,7 @@ async fn test_batch_operation_partial_failure() {
         .expect("Batch delete should handle mixed IDs");
 
     // Should have deleted at least the valid ones
-    assert!(result.success_count >= 0);
+    assert!(result.success_count > 0);
 }
 
 // ============================================================
