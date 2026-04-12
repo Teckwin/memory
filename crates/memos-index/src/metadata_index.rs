@@ -581,7 +581,7 @@ mod tests {
         // Test with specific range that should return results
         let results = index.get_by_importance(0.3, 0.7, Some(workspace_id)).await;
         // Default importance is 0.5, so should return results
-        assert!(results.len() >= 0);
+        assert!(!results.is_empty());
     }
 
     #[tokio::test]
